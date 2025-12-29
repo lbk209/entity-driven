@@ -1,6 +1,6 @@
 # Entity Reviews (SQLite + Next.js)
 
-Minimal Next.js App Router app for local testing with SQLite. Supports creating users, submitting reviews linked to entities, and filtering reviews by linked entities.
+Minimal Next.js App Router app for local testing with SQLite. Supports creating users, submitting and editing reviews linked to entities, and filtering reviews by linked entities.
 
 ## Requirements
 
@@ -22,6 +22,8 @@ Open `http://localhost:3000`.
   - Body: `{ "user_id": "alice", "password": "secret" }`
 - `POST /api/review`
   - Body: `{ "user_id": "alice", "password": "secret", "content": "...", "entities": [{"name":"Payments"}] }`
+- `PUT /api/review?id=REVIEW_ID`
+  - Body: `{ "user_id": "alice", "password": "secret", "content": "...", "entities": [{"name":"Payments"}] }`
 - `GET /api/reviews`
   - Optional query: `?entity=NAME`
 - `GET /api/entities`
@@ -34,4 +36,5 @@ SQLite file is created at `data/app.sqlite` on first API call. Schema is in `lib
 
 - Plain-text passwords are used (local testing only).
 - Review previews show only the first 1–2 sentences.
-- Filtering is by linked entity name only.
+- Filtering matches entity name terms (e.g., "chicken" matches "fried chicken").
+- Review updates store `updated_at` and appear first in lists.

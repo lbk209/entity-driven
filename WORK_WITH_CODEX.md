@@ -6,8 +6,8 @@ This file captures context so we can continue quickly next time.
 
 Minimal Next.js App Router app with SQLite for local testing. Features:
 - Create users
-- Submit reviews linked to entities (inline creation supported)
-- Filter reviews by linked entity name
+- Submit and edit reviews linked to entities (inline creation supported)
+- Filter reviews by linked entity name terms
 - Review previews show first 1-2 sentences
 
 ## Stack
@@ -27,7 +27,8 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
   - `app/api/review/route.ts`
   - `app/api/reviews/route.ts`
   - `app/api/entities/route.ts`
-- Frontend UI: `app/page.tsx`
+- Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/page.tsx`, `app/reviews/[id]/edit/page.tsx`
+- Shared review form: `app/reviews/ReviewForm.tsx`
 - Styles: `app/globals.css`
 
 ## Local Run
@@ -50,6 +51,11 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - SQLite file is created at `data/app.sqlite` on first API call.
 - `.gitignore` excludes `node_modules/`, `.next/`, `.next.bak/`, and `data/app.sqlite`.
 - Passwords are plain text (testing only).
+- Review updates record `updated_at` and list sorting uses updated time.
+- Review list shows real user IDs, two-line layout, and entity badges.
+- Entity picker uses inline chips, autocomplete suggestions, and a collapse toggle.
+- Review details show entity badges before content with an edit action.
+- Notebook for data review: `review_app_sqlite.ipynb`.
 
 ## Next Ideas
 

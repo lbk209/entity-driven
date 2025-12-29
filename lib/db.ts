@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS review (
   user_id INTEGER NOT NULL,
   content TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  updated_at TEXT,
   FOREIGN KEY (user_id) REFERENCES user(id)
 );
 
@@ -45,6 +46,13 @@ export function getDb() {
   const dbPath = path.join(dataDir, 'app.sqlite');
   db = new Database(dbPath);
   db.exec(schemaSql);
+  const reviewColumns = db.prepare("PRAGMA table_info('review')").all() as Array<{
+    name: string;
+  }>;
+  const hasUpdatedAt = reviewColumns.some((column) => column.name === 'updated_at');
+  if (!hasUpdatedAt) {
+    db.exec('ALTER TABLE review ADD COLUMN updated_at TEXT');
+  }
   return db;
 }
 
