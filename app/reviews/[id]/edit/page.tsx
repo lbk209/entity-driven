@@ -22,7 +22,7 @@ function getReviewForEdit(id: number): ReviewEditData | null {
       FROM review r
       JOIN user u ON u.id = r.user_id
       LEFT JOIN review_entity re ON r.id = re.review_id
-      LEFT JOIN entity e ON e.id = re.entity_id
+      LEFT JOIN nodes e ON e.id = re.entity_id
       WHERE r.id = ?
       GROUP BY r.id
     `

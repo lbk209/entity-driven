@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'invalid user credentials' }, { status: 401 });
   }
 
-  const entities: Array<{ name: string; type?: string; level?: number; parent_id?: number | null }> =
+  const entities: Array<{ name: string; type?: string }> =
     Array.isArray(body.entities) ? body.entities : [];
 
   const tx = db.transaction(() => {
@@ -38,22 +38,23 @@ export async function POST(request: Request) {
     const reviewId = Number(reviewResult.lastInsertRowid);
 
     const insertEntity = db.prepare(
-      'INSERT OR IGNORE INTO entity (name, type, level, parent_id) VALUES (?, ?, ?, ?)'
+      'INSERT OR IGNORE INTO nodes (name, type) VALUES (?, ?)'
     );
-    const selectEntity = db.prepare('SELECT id FROM entity WHERE name = ?');
+    const selectEntity = db.prepare('SELECT id FROM nodes WHERE name = ? AND type = ?');
     const insertLink = db.prepare(
       'INSERT OR IGNORE INTO review_entity (review_id, entity_id) VALUES (?, ?)'
     );
 
     for (const entity of entities) {
       if (!entity?.name) continue;
+      const normalizedType = entity.type?.trim() || 'default';
       insertEntity.run(
         entity.name,
-        entity.type ?? null,
-        entity.level ?? null,
-        entity.parent_id ?? null
+        normalizedType
       );
-      const row = selectEntity.get(entity.name) as { id: number } | undefined;
+      const row = selectEntity.get(entity.name, normalizedType) as
+        | { id: number }
+        | undefined;
       if (row) {
         insertLink.run(reviewId, row.id);
       }
@@ -100,7 +101,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'review does not belong to user' }, { status: 403 });
   }
 
-  const entities: Array<{ name: string; type?: string; level?: number; parent_id?: number | null }> =
+  const entities: Array<{ name: string; type?: string }> =
     Array.isArray(body.entities) ? body.entities : [];
 
   const tx = db.transaction(() => {
@@ -110,22 +111,23 @@ export async function PUT(request: Request) {
     db.prepare('DELETE FROM review_entity WHERE review_id = ?').run(reviewId);
 
     const insertEntity = db.prepare(
-      'INSERT OR IGNORE INTO entity (name, type, level, parent_id) VALUES (?, ?, ?, ?)'
+      'INSERT OR IGNORE INTO nodes (name, type) VALUES (?, ?)'
     );
-    const selectEntity = db.prepare('SELECT id FROM entity WHERE name = ?');
+    const selectEntity = db.prepare('SELECT id FROM nodes WHERE name = ? AND type = ?');
     const insertLink = db.prepare(
       'INSERT OR IGNORE INTO review_entity (review_id, entity_id) VALUES (?, ?)'
     );
 
     for (const entity of entities) {
       if (!entity?.name) continue;
+      const normalizedType = entity.type?.trim() || 'default';
       insertEntity.run(
         entity.name,
-        entity.type ?? null,
-        entity.level ?? null,
-        entity.parent_id ?? null
+        normalizedType
       );
-      const row = selectEntity.get(entity.name) as { id: number } | undefined;
+      const row = selectEntity.get(entity.name, normalizedType) as
+        | { id: number }
+        | undefined;
       if (row) {
         insertLink.run(reviewId, row.id);
       }

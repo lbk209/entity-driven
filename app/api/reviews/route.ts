@@ -25,21 +25,21 @@ export async function GET(request: Request) {
   }> = [];
 
   if (terms.length > 0) {
-    const whereClause = terms.map(() => 'LOWER(e2.name) LIKE ?').join(' OR ');
+    const whereClause = terms.map(() => 'LOWER(n2.name) LIKE ?').join(' OR ');
     const params = terms.map((term) => `%${term}%`);
     rows = db
       .prepare(
         `
         SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               GROUP_CONCAT(e.name, ',') AS entities
+               GROUP_CONCAT(n.name, ',') AS entities
         FROM review r
         JOIN user u ON u.id = r.user_id
         LEFT JOIN review_entity re ON r.id = re.review_id
-        LEFT JOIN entity e ON e.id = re.entity_id
+        LEFT JOIN nodes n ON n.id = re.entity_id
         WHERE r.id IN (
           SELECT re2.review_id
           FROM review_entity re2
-          JOIN entity e2 ON e2.id = re2.entity_id
+          JOIN nodes n2 ON n2.id = re2.entity_id
           WHERE ${whereClause}
         )
         GROUP BY r.id
@@ -52,11 +52,11 @@ export async function GET(request: Request) {
       .prepare(
         `
         SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               GROUP_CONCAT(e.name, ',') AS entities
+               GROUP_CONCAT(n.name, ',') AS entities
         FROM review r
         JOIN user u ON u.id = r.user_id
         LEFT JOIN review_entity re ON r.id = re.review_id
-        LEFT JOIN entity e ON e.id = re.entity_id
+        LEFT JOIN nodes n ON n.id = re.entity_id
         GROUP BY r.id
         ORDER BY COALESCE(r.updated_at, r.created_at) DESC
       `

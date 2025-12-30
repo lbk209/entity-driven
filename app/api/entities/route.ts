@@ -7,7 +7,7 @@ export async function GET() {
   const db = getDb();
   const entities = db
     .prepare(
-      'SELECT id, name, type, level, parent_id FROM entity ORDER BY name ASC'
+      'SELECT id, name, type FROM nodes ORDER BY name ASC'
     )
     .all();
 

@@ -20,13 +20,20 @@ CREATE TABLE IF NOT EXISTS review (
   FOREIGN KEY (user_id) REFERENCES user(id)
 );
 
-CREATE TABLE IF NOT EXISTS entity (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE,
-  type TEXT,
-  level INTEGER,
-  parent_id INTEGER,
-  FOREIGN KEY (parent_id) REFERENCES entity(id)
+CREATE TABLE IF NOT EXISTS nodes (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  UNIQUE(name, type)
+);
+
+CREATE TABLE IF NOT EXISTS edges (
+  parent_id INTEGER NOT NULL,
+  child_id INTEGER NOT NULL,
+  relation TEXT NOT NULL,
+  UNIQUE(parent_id, child_id, relation),
+  FOREIGN KEY (parent_id) REFERENCES nodes(id),
+  FOREIGN KEY (child_id) REFERENCES nodes(id)
 );
 
 CREATE TABLE IF NOT EXISTS review_entity (
@@ -34,7 +41,7 @@ CREATE TABLE IF NOT EXISTS review_entity (
   entity_id INTEGER NOT NULL,
   PRIMARY KEY (review_id, entity_id),
   FOREIGN KEY (review_id) REFERENCES review(id),
-  FOREIGN KEY (entity_id) REFERENCES entity(id)
+  FOREIGN KEY (entity_id) REFERENCES nodes(id)
 );
 `;
 
@@ -46,6 +53,43 @@ export function getDb() {
   const dbPath = path.join(dataDir, 'app.sqlite');
   db = new Database(dbPath);
   db.exec(schemaSql);
+  const hasNodes = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'")
+    .get() as { name?: string } | undefined;
+  if (!hasNodes?.name) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS nodes (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        UNIQUE(name, type)
+      );
+    `);
+  }
+  const hasEdges = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='edges'")
+    .get() as { name?: string } | undefined;
+  if (!hasEdges?.name) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS edges (
+        parent_id INTEGER NOT NULL,
+        child_id INTEGER NOT NULL,
+        relation TEXT NOT NULL,
+        UNIQUE(parent_id, child_id, relation),
+        FOREIGN KEY (parent_id) REFERENCES nodes(id),
+        FOREIGN KEY (child_id) REFERENCES nodes(id)
+      );
+    `);
+  }
+  const hasEntity = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='entity'")
+    .get() as { name?: string } | undefined;
+  if (hasEntity?.name) {
+    db.exec(`
+      INSERT OR IGNORE INTO nodes (id, name, type)
+      SELECT id, name, 'default' FROM entity
+    `);
+  }
   const reviewColumns = db.prepare("PRAGMA table_info('review')").all() as Array<{
     name: string;
   }>;

@@ -22,7 +22,7 @@ function getReview(id: number): ReviewDetail | null {
              GROUP_CONCAT(e.name, ',') AS entities
       FROM review r
       LEFT JOIN review_entity re ON r.id = re.review_id
-      LEFT JOIN entity e ON e.id = re.entity_id
+      LEFT JOIN nodes e ON e.id = re.entity_id
       WHERE r.id = ?
       GROUP BY r.id
     `

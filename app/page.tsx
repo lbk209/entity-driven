@@ -6,9 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 type Entity = {
   id: number;
   name: string;
-  type: string | null;
-  level: number | null;
-  parent_id: number | null;
+  type: string;
 };
 
 type Review = {
