@@ -31,7 +31,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
   - `app/api/edges/route.ts`
 - Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/page.tsx`, `app/reviews/[id]/edit/page.tsx`
 - Shared review form: `app/reviews/ReviewForm.tsx`
-- Admin UI: `app/edges/admin/page.tsx`
+- Admin UI: `app/admin/page.tsx`
 - Styles: `app/globals.css`
 
 ## Local Run
@@ -59,8 +59,9 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Entity picker uses inline chips, autocomplete suggestions, and a collapse toggle.
 - Review details show entity badges before content with an edit action.
 - Schema now uses `nodes` (id, name, type; unique on name+type) and `edges` (parent, child, relation).
-- Admin page for nodes/edges management at `/edges/admin`.
+- Admin page for nodes/edges management at `/admin`.
 - Notebook for data review: `review_app_sqlite.ipynb`.
+- Admin page behavior: tabs for nodes/edges, search + insert toolbar, insert/edit forms appear under search, rows are clickable to load edit form, delete requires confirm (stronger if referenced), edit can switch by clicking another row, and rows truncate long values for alignment.
 
 ## Schema
 
@@ -81,6 +82,14 @@ CREATE TABLE IF NOT EXISTS edges (
   FOREIGN KEY(child_id) REFERENCES nodes(id)
 );
 ```
+
+## Quick Context (No File Reads Needed)
+
+- Admin UI path: `/admin`
+- Tables: `nodes(id, name, type)` and `edges(parent_id, child_id, relation)`
+- Node/edge edit uses the same inline form layout as insert, with Save/Cancel/Delete
+- Delete confirmation always appears; if referenced by reviews/edges, message is stronger
+- Clicking a different row replaces the current edit form
 
 ## Next Ideas
 

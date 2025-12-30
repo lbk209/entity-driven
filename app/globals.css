@@ -48,6 +48,60 @@ h1 {
   flex-wrap: wrap;
 }
 
+.admin-tabs {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: auto;
+  min-width: 160px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  background: #fdfdfb;
+  color: #1f1f1f;
+  text-align: left;
+}
+
+.admin-tab strong {
+  font-size: 15px;
+}
+
+.admin-tab span {
+  font-size: 12px;
+  color: #666;
+}
+
+.admin-tab--active {
+  border-color: #1f1f1f;
+  background: #1f1f1f;
+  color: #fff;
+}
+
+.admin-tab--active span {
+  color: #eee;
+}
+
+.admin-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.admin-toolbar input {
+  flex: 1;
+}
+
+.admin-toolbar button {
+  width: auto;
+}
+
 label {
   display: block;
   font-size: 14px;
@@ -73,6 +127,68 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
+.admin-row {
+  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+}
+
+.admin-row > div {
+  white-space: nowrap;
+}
+
+.admin-row__actions {
+  justify-self: end;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-row--header {
+  font-size: 12px;
+  color: #666;
+  font-weight: 600;
+}
+
+.admin-row--clickable {
+  cursor: pointer;
+}
+
+.admin-row--clickable:hover {
+  background: #f6f6f2;
+}
+
+.admin-row__actions .button-row {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.admin-row__actions button {
+  width: auto;
+}
+
+.admin-row__actions--form {
+  align-items: center;
+}
+
+.admin-row--form {
+  grid-template-columns: 140px minmax(180px, 1fr) minmax(160px, 1fr) auto;
+}
+
+.admin-form {
+  margin-top: 12px;
+}
+
+.admin-row--data {
+  grid-template-columns: 100px minmax(220px, 1fr) minmax(180px, 1fr);
+}
+
+.admin-row--data > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-toolbar button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .list {
   list-style: none;
   padding: 0;
