@@ -81,15 +81,26 @@ export function getDb() {
       );
     `);
   }
-  const hasEntity = db
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='entity'")
-    .get() as { name?: string } | undefined;
-  if (hasEntity?.name) {
+  const reviewEntityFks = db
+    .prepare("PRAGMA foreign_key_list('review_entity')")
+    .all() as Array<{ table: string }>;
+  const reviewEntityUsesLegacy = reviewEntityFks.some((fk) => fk.table === 'entity');
+  if (reviewEntityUsesLegacy) {
     db.exec(`
-      INSERT OR IGNORE INTO nodes (id, name, type)
-      SELECT id, name, 'default' FROM entity
+      ALTER TABLE review_entity RENAME TO review_entity_old;
+      CREATE TABLE review_entity (
+        review_id INTEGER NOT NULL,
+        entity_id INTEGER NOT NULL,
+        PRIMARY KEY (review_id, entity_id),
+        FOREIGN KEY (review_id) REFERENCES review(id),
+        FOREIGN KEY (entity_id) REFERENCES nodes(id)
+      );
+      INSERT OR IGNORE INTO review_entity (review_id, entity_id)
+      SELECT review_id, entity_id FROM review_entity_old;
+      DROP TABLE review_entity_old;
     `);
   }
+  db.exec('DROP TABLE IF EXISTS entity;');
   const reviewColumns = db.prepare("PRAGMA table_info('review')").all() as Array<{
     name: string;
   }>;
