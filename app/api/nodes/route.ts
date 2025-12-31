@@ -3,7 +3,16 @@ import { getDb } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
-function parseNodePayload(body: unknown) {
+function parseNodeCreatePayload(body: unknown) {
+  if (!body || typeof body !== 'object') return null;
+  const record = body as { name?: string; type?: string };
+  const name = record.name?.trim();
+  const type = record.type?.trim();
+  if (!name || !type) return null;
+  return { name, type };
+}
+
+function parseNodeDeletePayload(body: unknown) {
   if (!body || typeof body !== 'object') return null;
   const record = body as { id?: number; name?: string; type?: string; force?: boolean };
   const id = Number(record.id);
@@ -35,7 +44,7 @@ export async function GET() {
     .prepare(
       `
       SELECT n.id, n.name, n.type,
-             (SELECT COUNT(*) FROM review_entity re WHERE re.entity_id = n.id) AS review_count,
+             (SELECT COUNT(*) FROM review_entity re WHERE re.node_id = n.id) AS review_count,
              (SELECT COUNT(*) FROM edges e WHERE e.parent_id = n.id OR e.child_id = n.id) AS edge_count
       FROM nodes n
       ORDER BY n.name ASC, n.type ASC
@@ -48,20 +57,32 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  const payload = parseNodePayload(body);
+  const payload = parseNodeCreatePayload(body);
   if (!payload) {
     return NextResponse.json(
-      { error: 'id, name, and type required' },
+      { error: 'name and type required' },
       { status: 400 }
     );
   }
 
   const db = getDb();
-  db.prepare('INSERT OR IGNORE INTO nodes (id, name, type) VALUES (?, ?, ?)').run(
-    payload.id,
-    payload.name,
-    payload.type
-  );
+  try {
+    const tx = db.transaction(() => {
+      const result = db
+        .prepare('INSERT INTO nodes (name, type) VALUES (?, ?)')
+        .run(payload.name, payload.type);
+      const nodeId = Number(result.lastInsertRowid);
+      db
+        .prepare('INSERT OR IGNORE INTO entity_aliases (alias, node_id) VALUES (?, ?)')
+        .run(payload.name, nodeId);
+    });
+    tx();
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'failed to insert node' },
+      { status: 400 }
+    );
+  }
 
   return NextResponse.json({ ok: true });
 }
@@ -83,7 +104,10 @@ export async function PUT(request: Request) {
       .run(payload.id, payload.name, payload.type, payload.originalId);
     if (payload.id !== payload.originalId) {
       db
-        .prepare('UPDATE review_entity SET entity_id = ? WHERE entity_id = ?')
+        .prepare('UPDATE review_entity SET node_id = ? WHERE node_id = ?')
+        .run(payload.id, payload.originalId);
+      db
+        .prepare('UPDATE entity_aliases SET node_id = ? WHERE node_id = ?')
         .run(payload.id, payload.originalId);
       db
         .prepare('UPDATE edges SET parent_id = ? WHERE parent_id = ?')
@@ -108,7 +132,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   const body = await request.json().catch(() => null);
-  const payload = parseNodePayload(body);
+  const payload = parseNodeDeletePayload(body);
   if (!payload) {
     return NextResponse.json(
       { error: 'id, name, and type required' },
@@ -122,13 +146,23 @@ export async function DELETE(request: Request) {
       .prepare(
         `
         SELECT
-          (SELECT COUNT(*) FROM review_entity re WHERE re.entity_id = ?) AS review_count,
-          (SELECT COUNT(*) FROM edges e WHERE e.parent_id = ? OR e.child_id = ?) AS edge_count
+          (SELECT COUNT(*) FROM review_entity re WHERE re.node_id = ?) AS review_count,
+          (SELECT COUNT(*) FROM edges e WHERE e.parent_id = ? OR e.child_id = ?) AS edge_count,
+          (SELECT COUNT(*) FROM entity_aliases ea WHERE ea.node_id = ?) AS alias_count
       `
       )
-      .get(payload.id, payload.id, payload.id) as
-      | { review_count: number; edge_count: number }
+      .get(payload.id, payload.id, payload.id, payload.id) as
+      | { review_count: number; edge_count: number; alias_count: number }
       | undefined;
+    if (row && row.alias_count > 0) {
+      return NextResponse.json(
+        {
+          error: 'node has aliases; reassign or remove aliases before deleting',
+          alias_count: row.alias_count
+        },
+        { status: 409 }
+      );
+    }
     if (row && (row.review_count > 0 || row.edge_count > 0)) {
       return NextResponse.json(
         {

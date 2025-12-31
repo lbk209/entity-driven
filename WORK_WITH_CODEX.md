@@ -28,7 +28,9 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
   - `app/api/reviews/route.ts`
   - `app/api/entities/route.ts`
   - `app/api/nodes/route.ts`
+  - `app/api/nodes/merge/route.ts`
   - `app/api/edges/route.ts`
+  - `app/api/aliases/route.ts`
 - Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/page.tsx`, `app/reviews/[id]/edit/page.tsx`
 - Shared review form: `app/reviews/ReviewForm.tsx`
 - Admin UI: `app/admin/page.tsx`
@@ -58,20 +60,50 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Review list shows real user IDs, two-line layout, and entity badges.
 - Entity picker uses inline chips, autocomplete suggestions, and a collapse toggle.
 - Review details show entity badges before content with an edit action.
-- Schema now uses `nodes` (id, name, type; unique on name+type) and `edges` (parent, child, relation).
-- Admin page for nodes/edges management at `/admin`.
+- Schema now uses canonical `nodes`, `entity_aliases`, and `review_entity.alias`.
+- Search/filter resolves via `entity_aliases` and filters on `review_entity.node_id` only.
+- Admin page for nodes/edges/aliases management at `/admin` with merge workflow.
+- Review edit supports delete with user/password confirmation.
 - Notebook for data review: `review_app_sqlite.ipynb`.
 - Admin page behavior: tabs for nodes/edges, search + insert toolbar, insert/edit forms appear under search, rows are clickable to load edit form, delete requires confirm (stronger if referenced), edit can switch by clicking another row, and rows truncate long values for alignment.
 
 ## Schema
 
 ```
+CREATE TABLE IF NOT EXISTS user (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL UNIQUE,
+  password TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS review (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES user(id)
+);
+
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
   UNIQUE(name, type)
 );
+
+CREATE TABLE IF NOT EXISTS entity_aliases (
+  alias TEXT PRIMARY KEY,
+  node_id INTEGER NOT NULL,
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
+CREATE TRIGGER IF NOT EXISTS nodes_self_alias
+AFTER INSERT ON nodes
+BEGIN
+  INSERT INTO entity_aliases (alias, node_id)
+  VALUES (NEW.name, NEW.id);
+END;
 
 CREATE TABLE IF NOT EXISTS edges (
   parent_id INTEGER NOT NULL,
@@ -81,14 +113,24 @@ CREATE TABLE IF NOT EXISTS edges (
   FOREIGN KEY(parent_id) REFERENCES nodes(id),
   FOREIGN KEY(child_id) REFERENCES nodes(id)
 );
+
+CREATE TABLE IF NOT EXISTS review_entity (
+  review_id INTEGER NOT NULL,
+  node_id INTEGER NOT NULL,
+  alias TEXT NOT NULL,
+  PRIMARY KEY (review_id, node_id),
+  FOREIGN KEY (review_id) REFERENCES review(id),
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
 ```
 
 ## Quick Context (No File Reads Needed)
 
 - Admin UI path: `/admin`
-- Tables: `nodes(id, name, type)` and `edges(parent_id, child_id, relation)`
-- Node/edge edit uses the same inline form layout as insert, with Save/Cancel/Delete
-- Delete confirmation always appears; if referenced by reviews/edges, message is stronger
+- Tables: `user`, `review`, `nodes`, `entity_aliases`, `edges`, `review_entity`
+- Nodes/edges/aliases use the same inline form layout as insert, with Save/Cancel/Delete
+- Delete confirmation always appears; if referenced by reviews/edges/aliases, message is stronger
+- Merge nodes reassigns aliases, reviews, and edges in a single transaction
 - Clicking a different row replaces the current edit form
 
 ## Next Ideas

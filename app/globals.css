@@ -48,6 +48,11 @@ h1 {
   flex-wrap: wrap;
 }
 
+.button-row--node-actions {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
 .admin-tabs {
   display: flex;
   gap: 12px;
@@ -141,6 +146,11 @@ textarea {
   justify-content: flex-end;
 }
 
+.admin-row__actions--node {
+  justify-self: start;
+  justify-content: flex-start;
+}
+
 .admin-row--header {
   font-size: 12px;
   color: #666;
@@ -160,6 +170,21 @@ textarea {
   flex-wrap: nowrap;
 }
 
+.admin-row__actions .button-row--node-actions {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.admin-row__actions .merge-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-row__actions .merge-target-select {
+  width: 140px;
+}
+
 .admin-row__actions button {
   width: auto;
 }
@@ -172,12 +197,24 @@ textarea {
   grid-template-columns: 140px minmax(180px, 1fr) minmax(160px, 1fr) auto;
 }
 
+.admin-row--form-node {
+  grid-template-columns: minmax(140px, 1fr) minmax(80px, 0.35fr) auto;
+}
+
+.admin-row--form-alias {
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
+}
+
 .admin-form {
   margin-top: 12px;
 }
 
 .admin-row--data {
   grid-template-columns: 100px minmax(220px, 1fr) minmax(180px, 1fr);
+}
+
+.admin-row--data-alias {
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
 }
 
 .admin-row--data > div {
@@ -205,6 +242,8 @@ textarea {
   color: inherit;
   text-decoration: none;
   padding: 6px 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .review-link:hover .review-preview {
@@ -254,6 +293,7 @@ button {
 
 .review-preview {
   position: relative;
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -276,6 +316,10 @@ button {
   font-size: 12px;
   margin-top: 4px;
   padding-left: 8px;
+}
+
+.review-footer--edit {
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
 }
 
 .chip-row {

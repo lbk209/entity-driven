@@ -79,6 +79,29 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
     setSelectedEntities((prev) => prev.filter((item) => item !== name));
   }
 
+  async function handleDeleteReview() {
+    setSubmitMsg('');
+    if (mode !== 'edit' || !reviewId) {
+      setSubmitMsg('Missing review id.');
+      return;
+    }
+    if (!window.confirm('Delete this review?')) return;
+    const res = await fetch(`/api/review?id=${reviewId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: reviewUserId,
+        password: reviewPassword
+      })
+    });
+    if (res.ok) {
+      router.push('/');
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    setSubmitMsg(data.error || 'Failed to delete review.');
+  }
+
   async function handleSubmitReview(event: React.FormEvent) {
     event.preventDefault();
     setSubmitMsg('');
@@ -192,7 +215,7 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
           />
         </div>
 
-        <div className="row review-footer">
+        <div className={`row review-footer ${mode === 'edit' ? 'review-footer--edit' : ''}`}>
           <div>
             <label htmlFor="review-user-id">User ID</label>
             <input
@@ -214,8 +237,16 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
           </div>
           <div>
             <label>&nbsp;</label>
-            <button type="submit">{mode === 'edit' ? 'Update review' : 'Save review'}</button>
+            <button type="submit">{mode === 'edit' ? 'Update' : 'Save review'}</button>
           </div>
+          {mode === 'edit' && (
+            <div>
+              <label>&nbsp;</label>
+              <button type="button" className="button-link button-link--ghost" onClick={handleDeleteReview}>
+                Delete
+              </button>
+            </div>
+          )}
         </div>
       </form>
       {submitMsg && <small>{submitMsg}</small>}

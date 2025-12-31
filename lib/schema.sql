@@ -29,10 +29,24 @@ CREATE TABLE IF NOT EXISTS edges (
   FOREIGN KEY (child_id) REFERENCES nodes(id)
 );
 
+CREATE TABLE IF NOT EXISTS entity_aliases (
+  alias TEXT PRIMARY KEY,
+  node_id INTEGER NOT NULL,
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
+CREATE TRIGGER IF NOT EXISTS nodes_self_alias
+AFTER INSERT ON nodes
+BEGIN
+  INSERT INTO entity_aliases (alias, node_id)
+  VALUES (NEW.name, NEW.id);
+END;
+
 CREATE TABLE IF NOT EXISTS review_entity (
   review_id INTEGER NOT NULL,
-  entity_id INTEGER NOT NULL,
-  PRIMARY KEY (review_id, entity_id),
+  node_id INTEGER NOT NULL,
+  alias TEXT NOT NULL,
+  PRIMARY KEY (review_id, node_id),
   FOREIGN KEY (review_id) REFERENCES review(id),
-  FOREIGN KEY (entity_id) REFERENCES nodes(id)
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
 );

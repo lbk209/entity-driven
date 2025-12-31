@@ -57,8 +57,8 @@ export async function GET() {
     .prepare(
       `
       SELECT e.parent_id, e.child_id, e.relation,
-             (SELECT COUNT(*) FROM review_entity re WHERE re.entity_id = e.parent_id) AS parent_review_count,
-             (SELECT COUNT(*) FROM review_entity re WHERE re.entity_id = e.child_id) AS child_review_count
+             (SELECT COUNT(*) FROM review_entity re WHERE re.node_id = e.parent_id) AS parent_review_count,
+             (SELECT COUNT(*) FROM review_entity re WHERE re.node_id = e.child_id) AS child_review_count
       FROM edges e
       ORDER BY e.relation ASC, e.parent_id ASC, e.child_id ASC
     `
@@ -142,8 +142,8 @@ export async function DELETE(request: Request) {
       .prepare(
         `
         SELECT
-          (SELECT COUNT(*) FROM review_entity re WHERE re.entity_id = ?) AS parent_review_count,
-          (SELECT COUNT(*) FROM review_entity re WHERE re.entity_id = ?) AS child_review_count
+          (SELECT COUNT(*) FROM review_entity re WHERE re.node_id = ?) AS parent_review_count,
+          (SELECT COUNT(*) FROM review_entity re WHERE re.node_id = ?) AS child_review_count
       `
       )
       .get(payload.parentId, payload.childId) as

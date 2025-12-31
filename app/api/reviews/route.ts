@@ -25,38 +25,48 @@ export async function GET(request: Request) {
   }> = [];
 
   if (terms.length > 0) {
-    const whereClause = terms.map(() => 'LOWER(n2.name) LIKE ?').join(' OR ');
+    const whereClause = terms.map(() => 'LOWER(alias) LIKE ?').join(' OR ');
     const params = terms.map((term) => `%${term}%`);
-    rows = db
+    const nodeRows = db
       .prepare(
         `
-        SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               GROUP_CONCAT(n.name, ',') AS entities
-        FROM review r
-        JOIN user u ON u.id = r.user_id
-        LEFT JOIN review_entity re ON r.id = re.review_id
-        LEFT JOIN nodes n ON n.id = re.entity_id
-        WHERE r.id IN (
-          SELECT re2.review_id
-          FROM review_entity re2
-          JOIN nodes n2 ON n2.id = re2.entity_id
-          WHERE ${whereClause}
-        )
-        GROUP BY r.id
-        ORDER BY COALESCE(r.updated_at, r.created_at) DESC
+        SELECT DISTINCT node_id
+        FROM entity_aliases
+        WHERE ${whereClause}
       `
       )
-      .all(...params);
+      .all(...params) as Array<{ node_id: number }>;
+    const nodeIds = nodeRows.map((row) => row.node_id);
+    if (nodeIds.length > 0) {
+      const nodePlaceholders = nodeIds.map(() => '?').join(',');
+      rows = db
+        .prepare(
+          `
+          SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
+                 GROUP_CONCAT(re.alias, ',') AS entities
+          FROM review r
+          JOIN user u ON u.id = r.user_id
+          LEFT JOIN review_entity re ON r.id = re.review_id
+          WHERE r.id IN (
+            SELECT re2.review_id
+            FROM review_entity re2
+            WHERE re2.node_id IN (${nodePlaceholders})
+          )
+          GROUP BY r.id
+          ORDER BY COALESCE(r.updated_at, r.created_at) DESC
+        `
+        )
+        .all(...nodeIds);
+    }
   } else {
     rows = db
       .prepare(
         `
         SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               GROUP_CONCAT(n.name, ',') AS entities
+               GROUP_CONCAT(re.alias, ',') AS entities
         FROM review r
         JOIN user u ON u.id = r.user_id
         LEFT JOIN review_entity re ON r.id = re.review_id
-        LEFT JOIN nodes n ON n.id = re.entity_id
         GROUP BY r.id
         ORDER BY COALESCE(r.updated_at, r.created_at) DESC
       `

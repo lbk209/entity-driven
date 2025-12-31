@@ -36,12 +36,26 @@ CREATE TABLE IF NOT EXISTS edges (
   FOREIGN KEY (child_id) REFERENCES nodes(id)
 );
 
+CREATE TABLE IF NOT EXISTS entity_aliases (
+  alias TEXT PRIMARY KEY,
+  node_id INTEGER NOT NULL,
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
+CREATE TRIGGER IF NOT EXISTS nodes_self_alias
+AFTER INSERT ON nodes
+BEGIN
+  INSERT INTO entity_aliases (alias, node_id)
+  VALUES (NEW.name, NEW.id);
+END;
+
 CREATE TABLE IF NOT EXISTS review_entity (
   review_id INTEGER NOT NULL,
-  entity_id INTEGER NOT NULL,
-  PRIMARY KEY (review_id, entity_id),
+  node_id INTEGER NOT NULL,
+  alias TEXT NOT NULL,
+  PRIMARY KEY (review_id, node_id),
   FOREIGN KEY (review_id) REFERENCES review(id),
-  FOREIGN KEY (entity_id) REFERENCES nodes(id)
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
 );
 `;
 
@@ -81,25 +95,50 @@ export function getDb() {
       );
     `);
   }
-  const reviewEntityFks = db
-    .prepare("PRAGMA foreign_key_list('review_entity')")
-    .all() as Array<{ table: string }>;
-  const reviewEntityUsesLegacy = reviewEntityFks.some((fk) => fk.table === 'entity');
-  if (reviewEntityUsesLegacy) {
+  const reviewEntityColumns = db
+    .prepare("PRAGMA table_info('review_entity')")
+    .all() as Array<{ name: string }>;
+  const reviewEntityHasNodeId = reviewEntityColumns.some((column) => column.name === 'node_id');
+  const reviewEntityHasAlias = reviewEntityColumns.some((column) => column.name === 'alias');
+  const reviewEntityHasEntityId = reviewEntityColumns.some((column) => column.name === 'entity_id');
+  if (!reviewEntityHasNodeId || !reviewEntityHasAlias) {
+    const linkColumn = reviewEntityHasEntityId ? 'entity_id' : 'node_id';
     db.exec(`
       ALTER TABLE review_entity RENAME TO review_entity_old;
       CREATE TABLE review_entity (
         review_id INTEGER NOT NULL,
-        entity_id INTEGER NOT NULL,
-        PRIMARY KEY (review_id, entity_id),
+        node_id INTEGER NOT NULL,
+        alias TEXT NOT NULL,
+        PRIMARY KEY (review_id, node_id),
         FOREIGN KEY (review_id) REFERENCES review(id),
-        FOREIGN KEY (entity_id) REFERENCES nodes(id)
+        FOREIGN KEY (node_id) REFERENCES nodes(id)
       );
-      INSERT OR IGNORE INTO review_entity (review_id, entity_id)
-      SELECT review_id, entity_id FROM review_entity_old;
+      INSERT OR IGNORE INTO review_entity (review_id, node_id, alias)
+      SELECT re.review_id, re.${linkColumn}, COALESCE(n.name, '') AS alias
+      FROM review_entity_old re
+      LEFT JOIN nodes n ON n.id = re.${linkColumn};
       DROP TABLE review_entity_old;
     `);
   }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS entity_aliases (
+      alias TEXT PRIMARY KEY,
+      node_id INTEGER NOT NULL,
+      FOREIGN KEY (node_id) REFERENCES nodes(id)
+    );
+  `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS nodes_self_alias
+    AFTER INSERT ON nodes
+    BEGIN
+      INSERT INTO entity_aliases (alias, node_id)
+      VALUES (NEW.name, NEW.id);
+    END;
+  `);
+  db.exec(`
+    INSERT OR IGNORE INTO entity_aliases (alias, node_id)
+    SELECT name, id FROM nodes;
+  `);
   db.exec('DROP TABLE IF EXISTS entity;');
   const reviewColumns = db.prepare("PRAGMA table_info('review')").all() as Array<{
     name: string;

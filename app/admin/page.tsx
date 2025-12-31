@@ -18,28 +18,42 @@ type Edge = {
   child_review_count?: number;
 };
 
+type AliasRow = {
+  alias: string;
+  node_id: number;
+  node_name?: string;
+  node_type?: string;
+};
+
 type DraftEdge = Edge & { draftId: string };
-type DraftNode = NodeOption & { draftId: string };
+type DraftNode = { draftId: string; name: string; type: string };
+type DraftAlias = AliasRow & { draftId: string };
 type EditNode = NodeOption & { original_id: number };
 type EditEdge = Edge & {
   original_parent_id: number;
   original_child_id: number;
   original_relation: Edge['relation'];
 };
+type EditAlias = AliasRow & { original_alias: string };
 
 const relations: Array<Edge['relation']> = ['contains', 'sells'];
 
 export default function EdgesAdminPage() {
   const [nodes, setNodes] = useState<NodeOption[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+  const [aliases, setAliases] = useState<AliasRow[]>([]);
   const [drafts, setDrafts] = useState<DraftEdge[]>([]);
   const [nodeDrafts, setNodeDrafts] = useState<DraftNode[]>([]);
+  const [aliasDrafts, setAliasDrafts] = useState<DraftAlias[]>([]);
   const [editNode, setEditNode] = useState<EditNode | null>(null);
   const [editEdge, setEditEdge] = useState<EditEdge | null>(null);
+  const [editAlias, setEditAlias] = useState<EditAlias | null>(null);
   const [status, setStatus] = useState('');
-  const [activeTab, setActiveTab] = useState<'nodes' | 'edges'>('nodes');
+  const [activeTab, setActiveTab] = useState<'nodes' | 'edges' | 'aliases'>('nodes');
   const [nodeSearch, setNodeSearch] = useState('');
   const [edgeSearch, setEdgeSearch] = useState('');
+  const [aliasSearch, setAliasSearch] = useState('');
+  const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
 
   const nodeMap = useMemo(() => {
     const map = new Map<number, NodeOption>();
@@ -65,6 +79,16 @@ export default function EdgesAdminPage() {
     });
   }, [edges, edgeSearch, nodeMap]);
 
+  const filteredAliases = useMemo(() => {
+    const term = aliasSearch.trim().toLowerCase();
+    if (!term) return aliases;
+    return aliases.filter((alias) => {
+      const node = nodeMap.get(alias.node_id);
+      const nodeName = node?.name.toLowerCase() ?? '';
+      return alias.alias.toLowerCase().includes(term) || nodeName.includes(term);
+    });
+  }, [aliases, aliasSearch, nodeMap]);
+
   async function loadNodes() {
     const res = await fetch('/api/nodes');
     const data = await res.json().catch(() => ({}));
@@ -85,16 +109,39 @@ export default function EdgesAdminPage() {
     loadEdges().catch(() => setEdges([]));
   }, []);
 
+  async function loadAliases() {
+    const res = await fetch('/api/aliases');
+    const data = await res.json().catch(() => ({}));
+    setAliases(data.aliases || []);
+  }
+
+  useEffect(() => {
+    loadAliases().catch(() => setAliases([]));
+  }, []);
+
   function addNodeDraft() {
     if (nodeDrafts.length > 0 || editNode) return;
-    const nextId = nodes.reduce((maxId, node) => Math.max(maxId, node.id), 0) + 1;
     const draft: DraftNode = {
       draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      id: nextId,
       name: '',
       type: ''
     };
     setNodeDrafts((prev) => [...prev, draft]);
+    setStatus('');
+  }
+
+  function addAliasDraft() {
+    if (aliasDrafts.length > 0 || editAlias) return;
+    if (nodes.length === 0) {
+      setStatus('Add nodes first so aliases can reference them.');
+      return;
+    }
+    const draft: DraftAlias = {
+      draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      alias: '',
+      node_id: nodes[0].id
+    };
+    setAliasDrafts((prev) => [...prev, draft]);
     setStatus('');
   }
 
@@ -124,8 +171,16 @@ export default function EdgesAdminPage() {
     );
   }
 
-  function updateNodeDraft(draftId: string, next: Partial<NodeOption>) {
+  function updateNodeDraft(draftId: string, next: Partial<DraftNode>) {
     setNodeDrafts((prev) =>
+      prev.map((draft) =>
+        draft.draftId === draftId ? { ...draft, ...next } : draft
+      )
+    );
+  }
+
+  function updateAliasDraft(draftId: string, next: Partial<AliasRow>) {
+    setAliasDrafts((prev) =>
       prev.map((draft) =>
         draft.draftId === draftId ? { ...draft, ...next } : draft
       )
@@ -140,13 +195,16 @@ export default function EdgesAdminPage() {
     setEditEdge((prev) => (prev ? { ...prev, ...next } : prev));
   }
 
+  function updateEditAlias(next: Partial<AliasRow>) {
+    setEditAlias((prev) => (prev ? { ...prev, ...next } : prev));
+  }
+
   async function saveNodeDraft(draft: DraftNode) {
     setStatus('');
     const res = await fetch('/api/nodes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: draft.id,
         name: draft.name,
         type: draft.type
       })
@@ -158,6 +216,26 @@ export default function EdgesAdminPage() {
     }
     setNodeDrafts((prev) => prev.filter((item) => item.draftId !== draft.draftId));
     await loadNodes();
+    await loadAliases();
+  }
+
+  async function saveAliasDraft(draft: DraftAlias) {
+    setStatus('');
+    const res = await fetch('/api/aliases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        alias: draft.alias,
+        node_id: draft.node_id
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to insert alias.');
+      return;
+    }
+    setAliasDrafts((prev) => prev.filter((item) => item.draftId !== draft.draftId));
+    await loadAliases();
   }
 
   async function saveEditNode(node: EditNode) {
@@ -180,6 +258,27 @@ export default function EdgesAdminPage() {
     setEditNode(null);
     await loadNodes();
     await loadEdges();
+    await loadAliases();
+  }
+
+  async function saveEditAlias(alias: EditAlias) {
+    setStatus('');
+    const res = await fetch('/api/aliases', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        alias: alias.alias,
+        node_id: alias.node_id,
+        original_alias: alias.original_alias
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to update alias.');
+      return;
+    }
+    setEditAlias(null);
+    await loadAliases();
   }
 
   async function deleteNode(node: NodeOption) {
@@ -204,6 +303,7 @@ export default function EdgesAdminPage() {
     setEditNode(null);
     await loadNodes();
     await loadEdges();
+    await loadAliases();
   }
 
   async function saveDraft(draft: DraftEdge) {
@@ -234,8 +334,13 @@ export default function EdgesAdminPage() {
     setNodeDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
   }
 
+  function removeAliasDraft(draftId: string) {
+    setAliasDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
+  }
+
   function startEditNode(node: NodeOption) {
     if (nodeDrafts.length > 0) return;
+    setMergeTargetId(null);
     setEditNode({
       ...node,
       original_id: node.id
@@ -244,6 +349,67 @@ export default function EdgesAdminPage() {
 
   function cancelEditNode() {
     setEditNode(null);
+    setMergeTargetId(null);
+  }
+
+  async function mergeNode(sourceId: number) {
+    if (!mergeTargetId) {
+      setStatus('Select a merge target.');
+      return;
+    }
+    if (mergeTargetId === sourceId) {
+      setStatus('Merge target must be different from source.');
+      return;
+    }
+    const source = nodes.find((node) => node.id === sourceId);
+    const target = nodes.find((node) => node.id === mergeTargetId);
+    const message = `Merge ${source?.name ?? sourceId} into ${target?.name ?? mergeTargetId}? This will move aliases, reviews, and edges to the target.`;
+    if (!window.confirm(message)) return;
+    setStatus('');
+    const res = await fetch('/api/nodes/merge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_id: sourceId, target_id: mergeTargetId })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to merge node.');
+      return;
+    }
+    setEditNode(null);
+    setMergeTargetId(null);
+    await loadNodes();
+    await loadEdges();
+    await loadAliases();
+  }
+
+  function startEditAlias(alias: AliasRow) {
+    if (aliasDrafts.length > 0) return;
+    setEditAlias({
+      ...alias,
+      original_alias: alias.alias
+    });
+  }
+
+  function cancelEditAlias() {
+    setEditAlias(null);
+  }
+
+  async function deleteAlias(alias: AliasRow) {
+    setStatus('');
+    if (!window.confirm('Delete this alias?')) return;
+    const res = await fetch('/api/aliases', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alias: alias.alias, node_id: alias.node_id })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to delete alias.');
+      return;
+    }
+    setEditAlias(null);
+    await loadAliases();
   }
 
   async function saveEditEdge(edge: EditEdge) {
@@ -335,6 +501,16 @@ export default function EdgesAdminPage() {
           <button
             type="button"
             role="tab"
+            aria-selected={activeTab === 'aliases'}
+            className={`admin-tab ${activeTab === 'aliases' ? 'admin-tab--active' : ''}`}
+            onClick={() => setActiveTab('aliases')}
+          >
+            <strong>Aliases</strong>
+            <span>Manage alias rows</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={activeTab === 'edges'}
             className={`admin-tab ${activeTab === 'edges' ? 'admin-tab--active' : ''}`}
             onClick={() => setActiveTab('edges')}
@@ -360,17 +536,7 @@ export default function EdgesAdminPage() {
               </button>
             </div>
             {editNode && (
-              <div className="row review-footer admin-row admin-row--form admin-form">
-                <div>
-                  <input
-                    aria-label="Node id"
-                    placeholder="Id"
-                    value={editNode.id}
-                    onChange={(event) =>
-                      updateEditNode({ id: Number(event.target.value) })
-                    }
-                  />
-                </div>
+              <div className="row review-footer admin-row admin-row--form admin-row--form-node admin-form">
                 <div>
                   <input
                     aria-label="Node name"
@@ -391,8 +557,8 @@ export default function EdgesAdminPage() {
                     }
                   />
                 </div>
-                <div className="admin-row__actions admin-row__actions--form">
-                  <div className="button-row">
+                <div className="admin-row__actions admin-row__actions--form admin-row__actions--node">
+                  <div className="button-row button-row--node-actions">
                     <button type="button" onClick={() => saveEditNode(editNode)}>
                       Save
                     </button>
@@ -406,6 +572,32 @@ export default function EdgesAdminPage() {
                     <button type="button" onClick={() => deleteNode(editNode)}>
                       Delete
                     </button>
+                    {nodes.length > 1 && (
+                      <span className="merge-controls">
+                        <button type="button" onClick={() => mergeNode(editNode.id)}>
+                          Merge into
+                        </button>
+                        <select
+                          aria-label="Merge target"
+                          className="merge-target-select"
+                          value={mergeTargetId ?? ''}
+                          onChange={(event) =>
+                            setMergeTargetId(
+                              event.target.value ? Number(event.target.value) : null
+                            )
+                          }
+                        >
+                          <option value=""></option>
+                          {nodes
+                            .filter((node) => node.id !== editNode.id)
+                            .map((node) => (
+                              <option key={node.id} value={node.id}>
+                                {node.name} ({node.type})
+                              </option>
+                            ))}
+                        </select>
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -413,19 +605,9 @@ export default function EdgesAdminPage() {
             {nodeDrafts.length === 0 && <small>No pending node inserts.</small>}
             {nodeDrafts.map((draft) => (
               <div
-                className="row review-footer admin-row admin-row--form admin-form"
+                className="row review-footer admin-row admin-row--form admin-row--form-node admin-form"
                 key={draft.draftId}
               >
-                <div>
-                  <input
-                    aria-label="Node id"
-                    placeholder="Id"
-                    value={draft.id}
-                    onChange={(event) =>
-                      updateNodeDraft(draft.draftId, { id: Number(event.target.value) })
-                    }
-                  />
-                </div>
                 <div>
                   <input
                     aria-label="Node name"
@@ -485,6 +667,155 @@ export default function EdgesAdminPage() {
                 <div>{node.type}</div>
               </div>
             ))}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'aliases' && (
+        <>
+          <div className="section">
+            <h2>Aliases</h2>
+            <div className="admin-toolbar">
+              <input
+                placeholder="Search alias or node name"
+                value={aliasSearch}
+                onChange={(event) => setAliasSearch(event.target.value)}
+              />
+              <button
+                type="button"
+                onClick={addAliasDraft}
+                disabled={aliasDrafts.length > 0 || !!editAlias}
+              >
+                Insert alias
+              </button>
+            </div>
+            {editAlias && (
+              <div className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form">
+                <div>
+                  <input
+                    aria-label="Alias"
+                    placeholder="Alias"
+                    value={editAlias.alias}
+                    onChange={(event) =>
+                      updateEditAlias({ alias: event.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <select
+                    aria-label="Canonical node"
+                    value={editAlias.node_id}
+                    onChange={(event) =>
+                      updateEditAlias({
+                        node_id: Number(event.target.value)
+                      })
+                    }
+                  >
+                    {!nodeMap.has(editAlias.node_id) && (
+                      <option value={editAlias.node_id}>
+                        {editAlias.node_id}
+                      </option>
+                    )}
+                    {nodes.map((node) => (
+                      <option key={node.id} value={node.id}>
+                        {node.name} ({node.type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="admin-row__actions admin-row__actions--form">
+                  <div className="button-row">
+                    <button type="button" onClick={() => saveEditAlias(editAlias)}>
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="button-link button-link--ghost"
+                      onClick={cancelEditAlias}
+                    >
+                      Cancel
+                    </button>
+                    <button type="button" onClick={() => deleteAlias(editAlias)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {aliasDrafts.length === 0 && <small>No pending alias inserts.</small>}
+            {aliasDrafts.map((draft) => (
+              <div
+                className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form"
+                key={draft.draftId}
+              >
+                <div>
+                  <input
+                    aria-label="Alias"
+                    placeholder="Alias"
+                    value={draft.alias}
+                    onChange={(event) =>
+                      updateAliasDraft(draft.draftId, { alias: event.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <select
+                    aria-label="Canonical node"
+                    value={draft.node_id}
+                    onChange={(event) =>
+                      updateAliasDraft(draft.draftId, {
+                        node_id: Number(event.target.value)
+                      })
+                    }
+                  >
+                    {nodes.map((node) => (
+                      <option key={node.id} value={node.id}>
+                        {node.name} ({node.type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="admin-row__actions admin-row__actions--form">
+                  <div className="button-row">
+                    <button type="button" onClick={() => saveAliasDraft(draft)}>
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="button-link button-link--ghost"
+                      onClick={() => removeAliasDraft(draft.draftId)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="section">
+            <h2>Existing aliases</h2>
+            {filteredAliases.length > 0 && (
+              <div className="row review-footer admin-row admin-row--header admin-row--data-alias">
+                <div>Alias</div>
+                <div>Canonical node</div>
+              </div>
+            )}
+            {filteredAliases.length === 0 && <small>No aliases found.</small>}
+            {filteredAliases.map((alias) => {
+              const node = nodeMap.get(alias.node_id);
+              const nodeLabel = node ? `${node.name} (${node.type})` : alias.node_id;
+              return (
+                <div
+                  className="row review-footer admin-row admin-row--data admin-row--data-alias admin-row--clickable"
+                  key={alias.alias}
+                  onClick={() => startEditAlias(alias)}
+                >
+                  <div>{alias.alias}</div>
+                  <div>{nodeLabel}</div>
+                </div>
+              );
+            })}
           </div>
         </>
       )}

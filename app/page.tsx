@@ -78,18 +78,18 @@ export default function HomePage() {
         <ul className="list">
           {reviews.map((review) => (
             <li key={review.id}>
-              <Link className="review-link" href={`/reviews/${review.id}`}>
-                <div className="review-line">
-                  {review.entities.map((name) => (
-                    <span className="badge" key={name}>{name}</span>
-                  ))}
+              <div className="review-line">
+                {review.entities.map((name) => (
+                  <span className="badge" key={name}>{name}</span>
+                ))}
+                <Link className="review-link" href={`/reviews/${review.id}`}>
                   <span className="review-preview">{review.preview}</span>
-                </div>
-                <small className="review-meta">
-                  {review.user_id} ·{' '}
-                  {new Date(review.updated_at ?? review.created_at).toLocaleString()}
-                </small>
-              </Link>
+                </Link>
+              </div>
+              <small className="review-meta">
+                {review.user_id} ·{' '}
+                {new Date(review.updated_at ?? review.created_at).toLocaleString()}
+              </small>
             </li>
           ))}
         </ul>

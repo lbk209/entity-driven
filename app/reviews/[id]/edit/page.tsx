@@ -18,11 +18,10 @@ function getReviewForEdit(id: number): ReviewEditData | null {
     .prepare(
       `
       SELECT r.id, r.content, u.user_id,
-             GROUP_CONCAT(e.name, ',') AS entities
+             GROUP_CONCAT(re.alias, ',') AS entities
       FROM review r
       JOIN user u ON u.id = r.user_id
       LEFT JOIN review_entity re ON r.id = re.review_id
-      LEFT JOIN nodes e ON e.id = re.entity_id
       WHERE r.id = ?
       GROUP BY r.id
     `
