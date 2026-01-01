@@ -22,6 +22,7 @@ export default function HomePage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [filterEntity, setFilterEntity] = useState('');
+  const [filterUser, setFilterUser] = useState('');
 
   const entityNames = useMemo(
     () => entities.map((entity) => entity.name),
@@ -37,12 +38,37 @@ export default function HomePage() {
 
   useEffect(() => {
     const trimmed = filterEntity.trim();
-    const url = trimmed ? `/api/reviews?entity=${encodeURIComponent(trimmed)}` : '/api/reviews';
+    const userTrimmed = filterUser.trim();
+    const params = new URLSearchParams();
+    if (trimmed) params.set('entity', trimmed);
+    if (userTrimmed) params.set('user', userTrimmed);
+    const query = params.toString();
+    const url = query ? `/api/reviews?${query}` : '/api/reviews';
     fetch(url)
       .then((res) => res.json())
       .then((data) => setReviews(data.reviews || []))
       .catch(() => setReviews([]));
-  }, [filterEntity]);
+  }, [filterEntity, filterUser]);
+
+  function handleBadgeClick(name: string) {
+    setFilterEntity(name);
+  }
+
+  function handleUserClick(userId: string) {
+    setFilterUser(userId);
+  }
+
+  function handleClearFilters() {
+    setFilterEntity('');
+    setFilterUser('');
+  }
+
+  function handleBadgeKeyDown(name: string, event: React.KeyboardEvent<HTMLSpanElement>) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    event.stopPropagation();
+    handleBadgeClick(name);
+  }
 
   return (
     <>
@@ -58,19 +84,29 @@ export default function HomePage() {
 
       <section className="section">
         <label htmlFor="entity-search">Filter by linked entity</label>
-        <input
-          id="entity-search"
-          placeholder="Type entity name"
-          value={filterEntity}
-          onChange={(event) => setFilterEntity(event.target.value)}
-          list="entity-suggestions"
-        />
+        <div className="filter-row">
+          <input
+            id="entity-search"
+            placeholder="Type entity name"
+            value={filterEntity}
+            onChange={(event) => setFilterEntity(event.target.value)}
+            list="entity-suggestions"
+          />
+          {(filterEntity.trim() || filterUser.trim()) && (
+            <button className="clear-button" type="button" onClick={handleClearFilters}>
+              Clear
+            </button>
+          )}
+        </div>
         <datalist id="entity-suggestions">
           {entityNames.map((name) => (
             <option key={name} value={name} />
           ))}
         </datalist>
         <small>Filtering only matches linked entities, not review text.</small>
+        {filterUser.trim() && (
+          <small>Filtering by user: {filterUser.trim()}</small>
+        )}
       </section>
 
       <section className="section">
@@ -79,17 +115,37 @@ export default function HomePage() {
           {reviews.map((review) => (
             <li key={review.id}>
               <div className="review-line">
-                <Link className="review-link" href={`/reviews/${review.id}`}>
-                  <span className="review-preview">
-                    {review.entities.map((name) => (
-                      <span className="badge" key={name}>{name}</span>
-                    ))}
+                <span className="review-preview">
+                  {review.entities.map((name) => (
+                    <span
+                      className="badge badge--filter"
+                      key={name}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleBadgeClick(name);
+                      }}
+                      onKeyDown={(event) => handleBadgeKeyDown(name, event)}
+                    >
+                      {name}
+                    </span>
+                  ))}
+                  <Link className="review-link" href={`/reviews/${review.id}`}>
                     {review.preview}
-                  </span>
-                </Link>
+                  </Link>
+                </span>
               </div>
               <small className="review-meta">
-                {review.user_id} ·{' '}
+                <button
+                  className="review-user"
+                  type="button"
+                  onClick={() => handleUserClick(review.user_id)}
+                >
+                  {review.user_id}
+                </button>{' '}
+                ·{' '}
                 {new Date(review.updated_at ?? review.created_at).toLocaleString()}
               </small>
             </li>

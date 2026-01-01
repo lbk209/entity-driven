@@ -6,6 +6,7 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const entityName = searchParams.get('entity');
+  const userId = searchParams.get('user');
   const terms = entityName
     ? entityName
         .toLowerCase()
@@ -13,6 +14,7 @@ export async function GET(request: Request) {
         .map((term) => term.trim())
         .filter(Boolean)
     : [];
+  const userFilter = userId ? userId.trim() : '';
 
   const db = getDb();
   let rows: Array<{
@@ -39,6 +41,7 @@ export async function GET(request: Request) {
     const nodeIds = nodeRows.map((row) => row.node_id);
     if (nodeIds.length > 0) {
       const nodePlaceholders = nodeIds.map(() => '?').join(',');
+      const userClause = userFilter ? 'AND u.user_id = ?' : '';
       rows = db
         .prepare(
           `
@@ -52,13 +55,15 @@ export async function GET(request: Request) {
             FROM review_entity re2
             WHERE re2.node_id IN (${nodePlaceholders})
           )
+          ${userClause}
           GROUP BY r.id
           ORDER BY COALESCE(r.updated_at, r.created_at) DESC
         `
         )
-        .all(...nodeIds);
+        .all(...nodeIds, ...(userFilter ? [userFilter] : []));
     }
   } else {
+    const userClause = userFilter ? 'WHERE u.user_id = ?' : '';
     rows = db
       .prepare(
         `
@@ -67,11 +72,12 @@ export async function GET(request: Request) {
         FROM review r
         JOIN user u ON u.id = r.user_id
         LEFT JOIN review_entity re ON r.id = re.review_id
+        ${userClause}
         GROUP BY r.id
         ORDER BY COALESCE(r.updated_at, r.created_at) DESC
       `
       )
-      .all();
+      .all(...(userFilter ? [userFilter] : []));
   }
 
   const reviews = rows.map((row) => ({
