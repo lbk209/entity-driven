@@ -250,6 +250,10 @@ textarea {
   text-decoration: underline;
 }
 
+.review-preview .badge {
+  text-decoration: none;
+}
+
 .badge {
   display: inline-block;
   padding: 2px 8px;
@@ -309,6 +313,19 @@ button {
   height: 100%;
   background: linear-gradient(to right, rgba(255, 255, 255, 0), #fff);
   pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .review-preview {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+  }
+
+  .review-preview::after {
+    display: none;
+  }
 }
 
 .review-meta {

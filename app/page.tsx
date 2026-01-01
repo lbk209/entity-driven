@@ -79,11 +79,13 @@ export default function HomePage() {
           {reviews.map((review) => (
             <li key={review.id}>
               <div className="review-line">
-                {review.entities.map((name) => (
-                  <span className="badge" key={name}>{name}</span>
-                ))}
                 <Link className="review-link" href={`/reviews/${review.id}`}>
-                  <span className="review-preview">{review.preview}</span>
+                  <span className="review-preview">
+                    {review.entities.map((name) => (
+                      <span className="badge" key={name}>{name}</span>
+                    ))}
+                    {review.preview}
+                  </span>
                 </Link>
               </div>
               <small className="review-meta">

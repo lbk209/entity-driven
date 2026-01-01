@@ -8,7 +8,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 - Create users
 - Submit and edit reviews linked to entities (inline creation supported)
 - Filter reviews by linked entity name terms
-- Review previews show first 1-2 sentences
+- Review previews use full content; entity badges are inline and mobile clamps to two lines
 
 ## Stack
 

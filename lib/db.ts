@@ -153,6 +153,5 @@ export function getDb() {
 export function previewText(content: string) {
   const trimmed = content.trim();
   if (!trimmed) return '';
-  const sentences = trimmed.split(/(?<=[.!?])\s+/);
-  return sentences.slice(0, 2).join(' ');
+  return trimmed.replace(/\s+/g, ' ');
 }
