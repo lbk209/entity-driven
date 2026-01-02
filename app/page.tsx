@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Entity = {
   id: number;
@@ -23,6 +23,8 @@ export default function HomePage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [filterEntity, setFilterEntity] = useState('');
   const [filterUser, setFilterUser] = useState('');
+  const [stickyHeight, setStickyHeight] = useState(0);
+  const stickyRef = useRef<HTMLDivElement | null>(null);
 
   const entityNames = useMemo(
     () => entities.map((entity) => entity.name),
@@ -50,6 +52,20 @@ export default function HomePage() {
       .catch(() => setReviews([]));
   }, [filterEntity, filterUser]);
 
+  useEffect(() => {
+    const stickyNode = stickyRef.current;
+    if (!stickyNode) return;
+    const updateHeight = () => {
+      const nextHeight = stickyNode.offsetHeight;
+      setStickyHeight((prev) => (prev === 0 ? nextHeight : Math.min(prev, nextHeight)));
+    };
+    updateHeight();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(stickyNode);
+    return () => observer.disconnect();
+  }, []);
+
   function handleBadgeClick(name: string) {
     setFilterEntity(name);
   }
@@ -72,86 +88,93 @@ export default function HomePage() {
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <h1>Entity Reviews</h1>
-          <small>Browse recent reviews and filter by linked entity.</small>
+      <div className="sticky-panel" ref={stickyRef}>
+        <div className="page-header">
+          <div>
+            <h1>Entity Reviews</h1>
+            <small>Browse recent reviews and filter by linked entity.</small>
+          </div>
+          <Link href="/reviews/new" className="button-link">
+            Write review
+          </Link>
         </div>
-        <Link href="/reviews/new" className="button-link">
-          Write review
-        </Link>
-      </div>
 
-      <section className="section">
-        <label htmlFor="entity-search">Filter by linked entity</label>
-        <div className="filter-row">
-          <input
-            id="entity-search"
-            placeholder="Type entity name"
-            value={filterEntity}
-            onChange={(event) => setFilterEntity(event.target.value)}
-            list="entity-suggestions"
-          />
-          {(filterEntity.trim() || filterUser.trim()) && (
-            <button className="clear-button" type="button" onClick={handleClearFilters}>
-              Clear
-            </button>
+        <section className="section">
+          <label htmlFor="entity-search">Filter by linked entity</label>
+          <div className="filter-row">
+            <input
+              id="entity-search"
+              placeholder="Type entity name"
+              value={filterEntity}
+              onChange={(event) => setFilterEntity(event.target.value)}
+              list="entity-suggestions"
+            />
+            {(filterEntity.trim() || filterUser.trim()) && (
+              <button className="clear-button" type="button" onClick={handleClearFilters}>
+                Clear
+              </button>
+            )}
+          </div>
+          <datalist id="entity-suggestions">
+            {entityNames.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          <small>Filtering only matches linked entities, not review text.</small>
+          {filterUser.trim() && (
+            <small>Filtering by user: {filterUser.trim()}</small>
           )}
-        </div>
-        <datalist id="entity-suggestions">
-          {entityNames.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
-        <small>Filtering only matches linked entities, not review text.</small>
-        {filterUser.trim() && (
-          <small>Filtering by user: {filterUser.trim()}</small>
-        )}
-      </section>
+        </section>
+      </div>
+      <div className="sticky-spacer" style={{ height: stickyHeight }} aria-hidden="true" />
 
-      <section className="section">
-        <h2>Reviews</h2>
-        <ul className="list">
-          {reviews.map((review) => (
-            <li key={review.id}>
-              <div className="review-line">
-                <span className="review-preview">
-                  {review.entities.map((name) => (
-                    <span
-                      className="badge badge--filter"
-                      key={name}
-                      role="button"
-                      tabIndex={0}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        handleBadgeClick(name);
-                      }}
-                      onKeyDown={(event) => handleBadgeKeyDown(name, event)}
-                    >
-                      {name}
-                    </span>
-                  ))}
-                  <Link className="review-link" href={`/reviews/${review.id}`}>
-                    {review.preview}
-                  </Link>
-                </span>
-              </div>
-              <small className="review-meta">
-                <button
-                  className="review-user"
-                  type="button"
-                  onClick={() => handleUserClick(review.user_id)}
-                >
-                  {review.user_id}
-                </button>{' '}
-                ·{' '}
-                {new Date(review.updated_at ?? review.created_at).toLocaleString()}
-              </small>
-            </li>
-          ))}
-        </ul>
-        {reviews.length === 0 && <small>No reviews found.</small>}
+      <section
+        className="section section--reviews"
+        style={{ '--sticky-height': `${stickyHeight}px` } as React.CSSProperties}
+      >
+        <div className="review-scroll">
+          <ul className="list list--snap">
+            {reviews.map((review) => (
+              <li key={review.id}>
+                <div className="review-line">
+                  <span className="review-preview">
+                    {review.entities.map((name) => (
+                      <span
+                        className="badge badge--filter"
+                        key={name}
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleBadgeClick(name);
+                        }}
+                        onKeyDown={(event) => handleBadgeKeyDown(name, event)}
+                      >
+                        {name}
+                      </span>
+                    ))}
+                    <Link className="review-link" href={`/reviews/${review.id}`}>
+                      {review.preview}
+                    </Link>
+                  </span>
+                </div>
+                <small className="review-meta">
+                  <button
+                    className="review-user"
+                    type="button"
+                    onClick={() => handleUserClick(review.user_id)}
+                  >
+                    {review.user_id}
+                  </button>{' '}
+                  ·{' '}
+                  {new Date(review.updated_at ?? review.created_at).toLocaleString()}
+                </small>
+              </li>
+            ))}
+          </ul>
+          {reviews.length === 0 && <small>No reviews found.</small>}
+        </div>
       </section>
     </>
   );
