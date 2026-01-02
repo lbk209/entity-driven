@@ -25,9 +25,14 @@ type AliasRow = {
   node_type?: string;
 };
 
-type DraftEdge = Edge & { draftId: string };
+type DraftEdge = {
+  draftId: string;
+  parent_id: number | null;
+  child_id: number | null;
+  relation: Edge['relation'] | '';
+};
 type DraftNode = { draftId: string; name: string; type: string };
-type DraftAlias = AliasRow & { draftId: string };
+type DraftAlias = { draftId: string; alias: string; node_id: number | null };
 type EditNode = NodeOption & { original_id: number };
 type EditEdge = Edge & {
   original_parent_id: number;
@@ -51,9 +56,18 @@ export default function EdgesAdminPage() {
   const [status, setStatus] = useState('');
   const [activeTab, setActiveTab] = useState<'nodes' | 'edges' | 'aliases'>('nodes');
   const [nodeSearch, setNodeSearch] = useState('');
+  const [nodeSearchField, setNodeSearchField] = useState<'name' | 'type'>('name');
   const [edgeSearch, setEdgeSearch] = useState('');
+  const [edgeSearchField, setEdgeSearchField] = useState<'parent' | 'child' | 'relation'>(
+    'parent'
+  );
   const [aliasSearch, setAliasSearch] = useState('');
+  const [aliasSearchField, setAliasSearchField] = useState<'alias' | 'node'>('alias');
   const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
+  const [nodeTypeSuggestTarget, setNodeTypeSuggestTarget] = useState<'edit' | 'draft' | null>(
+    null
+  );
+  const [nodeTypeFilterActive, setNodeTypeFilterActive] = useState(false);
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
 
@@ -63,11 +77,25 @@ export default function EdgesAdminPage() {
     return map;
   }, [nodes]);
 
+  const nodeTypes = useMemo(() => {
+    const seen = new Set<string>();
+    for (const node of nodes) {
+      const value = node.type.trim();
+      if (value) seen.add(value);
+    }
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+  }, [nodes]);
+
   const filteredNodes = useMemo(() => {
     const term = nodeSearch.trim().toLowerCase();
     if (!term) return nodes;
-    return nodes.filter((node) => node.name.toLowerCase().includes(term));
-  }, [nodes, nodeSearch]);
+    return nodes.filter((node) => {
+      const nameMatch = node.name.toLowerCase().includes(term);
+      const typeMatch = node.type.toLowerCase().includes(term);
+      if (nodeSearchField === 'type') return typeMatch;
+      return nameMatch;
+    });
+  }, [nodes, nodeSearch, nodeSearchField]);
 
   const filteredEdges = useMemo(() => {
     const term = edgeSearch.trim().toLowerCase();
@@ -77,9 +105,11 @@ export default function EdgesAdminPage() {
       const child = nodeMap.get(edge.child_id);
       const parentName = parent?.name.toLowerCase() ?? '';
       const childName = child?.name.toLowerCase() ?? '';
-      return parentName.includes(term) || childName.includes(term);
+      if (edgeSearchField === 'parent') return parentName.includes(term);
+      if (edgeSearchField === 'child') return childName.includes(term);
+      return edge.relation.toLowerCase().includes(term);
     });
-  }, [edges, edgeSearch, nodeMap]);
+  }, [edges, edgeSearch, edgeSearchField, nodeMap]);
 
   const filteredAliases = useMemo(() => {
     const term = aliasSearch.trim().toLowerCase();
@@ -87,9 +117,10 @@ export default function EdgesAdminPage() {
     return aliases.filter((alias) => {
       const node = nodeMap.get(alias.node_id);
       const nodeName = node?.name.toLowerCase() ?? '';
-      return alias.alias.toLowerCase().includes(term) || nodeName.includes(term);
+      if (aliasSearchField === 'node') return nodeName.includes(term);
+      return alias.alias.toLowerCase().includes(term);
     });
-  }, [aliases, aliasSearch, nodeMap]);
+  }, [aliases, aliasSearch, aliasSearchField, nodeMap]);
 
   async function loadNodes() {
     const res = await fetch('/api/nodes');
@@ -155,7 +186,7 @@ export default function EdgesAdminPage() {
     const draft: DraftAlias = {
       draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       alias: '',
-      node_id: nodes[0].id
+      node_id: null
     };
     setAliasDrafts((prev) => [...prev, draft]);
     setStatus('');
@@ -167,19 +198,17 @@ export default function EdgesAdminPage() {
       setStatus('Add nodes first so edges can reference them.');
       return;
     }
-    const parentId = nodes[0].id;
-    const childId = nodes[0].id;
     const draft: DraftEdge = {
       draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      parent_id: parentId,
-      child_id: childId,
-      relation: 'contains'
+      parent_id: null,
+      child_id: null,
+      relation: ''
     };
     setDrafts((prev) => [...prev, draft]);
     setStatus('');
   }
 
-  function updateDraft(draftId: string, next: Partial<Edge>) {
+  function updateDraft(draftId: string, next: Partial<DraftEdge>) {
     setDrafts((prev) =>
       prev.map((draft) =>
         draft.draftId === draftId ? { ...draft, ...next } : draft
@@ -195,7 +224,7 @@ export default function EdgesAdminPage() {
     );
   }
 
-  function updateAliasDraft(draftId: string, next: Partial<AliasRow>) {
+  function updateAliasDraft(draftId: string, next: Partial<DraftAlias>) {
     setAliasDrafts((prev) =>
       prev.map((draft) =>
         draft.draftId === draftId ? { ...draft, ...next } : draft
@@ -230,13 +259,25 @@ export default function EdgesAdminPage() {
       setStatus(data.error || 'Failed to insert node.');
       return;
     }
-    setNodeDrafts((prev) => prev.filter((item) => item.draftId !== draft.draftId));
+    setNodeDrafts((prev) =>
+      prev.map((item) =>
+        item.draftId === draft.draftId ? { ...item, name: '', type: '' } : item
+      )
+    );
     await loadNodes();
     await loadAliases();
   }
 
   async function saveAliasDraft(draft: DraftAlias) {
     setStatus('');
+    if (!draft.alias.trim()) {
+      setStatus('Alias is required.');
+      return;
+    }
+    if (!draft.node_id) {
+      setStatus('Select a canonical node.');
+      return;
+    }
     const res = await fetch('/api/aliases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -250,7 +291,13 @@ export default function EdgesAdminPage() {
       setStatus(data.error || 'Failed to insert alias.');
       return;
     }
-    setAliasDrafts((prev) => prev.filter((item) => item.draftId !== draft.draftId));
+    setAliasDrafts((prev) =>
+      prev.map((item) =>
+        item.draftId === draft.draftId
+          ? { ...item, alias: '', node_id: null }
+          : item
+      )
+    );
     await loadAliases();
   }
 
@@ -324,6 +371,10 @@ export default function EdgesAdminPage() {
 
   async function saveDraft(draft: DraftEdge) {
     setStatus('');
+    if (!draft.parent_id || !draft.child_id || !draft.relation) {
+      setStatus('Select parent, child, and relation.');
+      return;
+    }
     const res = await fetch('/api/edges', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -338,7 +389,13 @@ export default function EdgesAdminPage() {
       setStatus(data.error || 'Failed to insert edge.');
       return;
     }
-    setDrafts((prev) => prev.filter((item) => item.draftId !== draft.draftId));
+    setDrafts((prev) =>
+      prev.map((item) =>
+        item.draftId === draft.draftId
+          ? { ...item, parent_id: null, child_id: null, relation: '' }
+          : item
+      )
+    );
     await loadEdges();
   }
 
@@ -548,26 +605,54 @@ export default function EdgesAdminPage() {
                   />
                 </div>
                 <div>
-                  <input
-                    aria-label="Node type"
-                    placeholder="Type"
-                    value={editNode.type}
-                    onChange={(event) =>
-                      updateEditNode({ type: event.target.value })
-                    }
-                  />
+                  <div className="admin-type-input">
+                    <input
+                      aria-label="Node type"
+                      placeholder="Type"
+                      value={editNode.type}
+                      onChange={(event) => {
+                        updateEditNode({ type: event.target.value });
+                        setNodeTypeSuggestTarget('edit');
+                        setNodeTypeFilterActive(true);
+                      }}
+                      onFocus={() => {
+                        setNodeTypeSuggestTarget('edit');
+                        setNodeTypeFilterActive(false);
+                      }}
+                      onBlur={() => {
+                        setNodeTypeSuggestTarget(null);
+                        setNodeTypeFilterActive(false);
+                      }}
+                    />
+                    {nodeTypeSuggestTarget === 'edit' && nodeTypes.length > 0 && (
+                      <div className="admin-type-suggestions">
+                        {nodeTypes
+                          .filter((type) => {
+                            const term = editNode.type.trim().toLowerCase();
+                            if (!nodeTypeFilterActive || !term) return true;
+                            return type.toLowerCase().includes(term);
+                          })
+                          .map((type) => (
+                            <button
+                              type="button"
+                              key={type}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                updateEditNode({ type });
+                                setNodeTypeSuggestTarget(null);
+                              }}
+                            >
+                              {type}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="admin-row__actions admin-row__actions--form admin-row__actions--node">
                   <div className="button-row button-row--node-actions">
                     <button type="button" onClick={() => saveEditNode(editNode)}>
                       Update
-                    </button>
-                    <button
-                      type="button"
-                      className="button-link button-link--ghost"
-                      onClick={cancelEditNode}
-                    >
-                      Cancel
                     </button>
                     <button type="button" onClick={() => deleteNode(editNode)}>
                       Delete
@@ -598,6 +683,13 @@ export default function EdgesAdminPage() {
                         </select>
                       </span>
                     )}
+                    <button
+                      type="button"
+                      className="button-link button-link--ghost"
+                      onClick={cancelEditNode}
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
               </div>
@@ -618,19 +710,54 @@ export default function EdgesAdminPage() {
                     />
                   </div>
                   <div>
-                    <input
-                      aria-label="Node type"
-                      placeholder="Type"
+                    <div className="admin-type-input">
+                      <input
+                        aria-label="Node type"
+                        placeholder="Type"
                       value={draft.type}
-                      onChange={(event) =>
-                        updateNodeDraft(draft.draftId, { type: event.target.value })
-                      }
+                      onChange={(event) => {
+                        updateNodeDraft(draft.draftId, { type: event.target.value });
+                        setNodeTypeSuggestTarget('draft');
+                        setNodeTypeFilterActive(true);
+                      }}
+                      onFocus={() => {
+                        setNodeTypeSuggestTarget('draft');
+                        setNodeTypeFilterActive(false);
+                      }}
+                      onBlur={() => {
+                        setNodeTypeSuggestTarget(null);
+                        setNodeTypeFilterActive(false);
+                      }}
                     />
+                    {nodeTypeSuggestTarget === 'draft' && nodeTypes.length > 0 && (
+                      <div className="admin-type-suggestions">
+                        {nodeTypes
+                          .filter((type) => {
+                            const term = draft.type.trim().toLowerCase();
+                            if (!nodeTypeFilterActive || !term) return true;
+                            return type.toLowerCase().includes(term);
+                          })
+                          .map((type) => (
+                              <button
+                                type="button"
+                                key={type}
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  updateNodeDraft(draft.draftId, { type });
+                                  setNodeTypeSuggestTarget(null);
+                                }}
+                              >
+                                {type}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="admin-row__actions admin-row__actions--form">
                     <div className="button-row">
                       <button type="button" onClick={() => saveNodeDraft(draft)}>
-                        Update
+                        Save
                       </button>
                       <button
                         type="button"
@@ -645,8 +772,19 @@ export default function EdgesAdminPage() {
               ))
             ) : (
               <div className="admin-toolbar">
+                <select
+                  className="admin-toolbar__select"
+                  aria-label="Filter node search field"
+                  value={nodeSearchField}
+                  onChange={(event) =>
+                    setNodeSearchField(event.target.value as 'name' | 'type')
+                  }
+                >
+                  <option value="name">Name</option>
+                  <option value="type">Type</option>
+                </select>
                 <input
-                  placeholder="Search node name"
+                  placeholder="Search nodes"
                   value={nodeSearch}
                   onChange={(event) => setNodeSearch(event.target.value)}
                 />
@@ -703,15 +841,15 @@ export default function EdgesAdminPage() {
                     <button type="button" onClick={() => saveEditAlias(editAlias)}>
                       Update
                     </button>
+                    <button type="button" onClick={() => deleteAlias(editAlias)}>
+                      Delete
+                    </button>
                     <button
                       type="button"
                       className="button-link button-link--ghost"
                       onClick={cancelEditAlias}
                     >
                       Cancel
-                    </button>
-                    <button type="button" onClick={() => deleteAlias(editAlias)}>
-                      Delete
                     </button>
                   </div>
                 </div>
@@ -734,14 +872,18 @@ export default function EdgesAdminPage() {
                   </div>
                   <div>
                     <select
+                      className={draft.node_id ? '' : 'admin-select--placeholder'}
                       aria-label="Canonical node"
-                      value={draft.node_id}
+                      value={draft.node_id ?? ''}
                       onChange={(event) =>
                         updateAliasDraft(draft.draftId, {
-                          node_id: Number(event.target.value)
+                          node_id: event.target.value
+                            ? Number(event.target.value)
+                            : null
                         })
                       }
                     >
+                      <option value="">Select node</option>
                       {nodes.map((node) => (
                         <option key={node.id} value={node.id}>
                           {node.name} ({node.type})
@@ -752,7 +894,7 @@ export default function EdgesAdminPage() {
                   <div className="admin-row__actions admin-row__actions--form">
                     <div className="button-row">
                       <button type="button" onClick={() => saveAliasDraft(draft)}>
-                        Update
+                        Save
                       </button>
                       <button
                         type="button"
@@ -767,8 +909,19 @@ export default function EdgesAdminPage() {
               ))
             ) : (
               <div className="admin-toolbar">
+                <select
+                  className="admin-toolbar__select"
+                  aria-label="Filter alias search field"
+                  value={aliasSearchField}
+                  onChange={(event) =>
+                    setAliasSearchField(event.target.value as 'alias' | 'node')
+                  }
+                >
+                  <option value="alias">Alias</option>
+                  <option value="node">Node</option>
+                </select>
                 <input
-                  placeholder="Search alias or node name"
+                  placeholder="Search aliases"
                   value={aliasSearch}
                   onChange={(event) => setAliasSearch(event.target.value)}
                 />
@@ -844,15 +997,15 @@ export default function EdgesAdminPage() {
                     <button type="button" onClick={() => saveEditEdge(editEdge)}>
                       Update
                     </button>
+                    <button type="button" onClick={() => deleteEdge(editEdge)}>
+                      Delete
+                    </button>
                     <button
                       type="button"
                       className="button-link button-link--ghost"
                       onClick={cancelEditEdge}
                     >
                       Cancel
-                    </button>
-                    <button type="button" onClick={() => deleteEdge(editEdge)}>
-                      Delete
                     </button>
                   </div>
                 </div>
@@ -865,12 +1018,18 @@ export default function EdgesAdminPage() {
                 >
                   <div>
                     <select
+                      className={draft.parent_id ? '' : 'admin-select--placeholder'}
                       aria-label="Parent node"
-                      value={draft.parent_id}
+                      value={draft.parent_id ?? ''}
                       onChange={(event) =>
-                        updateDraft(draft.draftId, { parent_id: Number(event.target.value) })
+                        updateDraft(draft.draftId, {
+                          parent_id: event.target.value
+                            ? Number(event.target.value)
+                            : null
+                        })
                       }
                     >
+                      <option value="">Select parent</option>
                       {nodes.map((node) => (
                         <option key={node.id} value={node.id}>
                           {node.name} ({node.type})
@@ -880,12 +1039,16 @@ export default function EdgesAdminPage() {
                   </div>
                   <div>
                     <select
+                      className={draft.child_id ? '' : 'admin-select--placeholder'}
                       aria-label="Child node"
-                      value={draft.child_id}
+                      value={draft.child_id ?? ''}
                       onChange={(event) =>
-                        updateDraft(draft.draftId, { child_id: Number(event.target.value) })
+                        updateDraft(draft.draftId, {
+                          child_id: event.target.value ? Number(event.target.value) : null
+                        })
                       }
                     >
+                      <option value="">Select child</option>
                       {nodes.map((node) => (
                         <option key={node.id} value={node.id}>
                           {node.name} ({node.type})
@@ -895,14 +1058,16 @@ export default function EdgesAdminPage() {
                   </div>
                   <div>
                     <select
+                      className={draft.relation ? '' : 'admin-select--placeholder'}
                       aria-label="Relation"
                       value={draft.relation}
                       onChange={(event) =>
                         updateDraft(draft.draftId, {
-                          relation: event.target.value as Edge['relation']
+                          relation: event.target.value as Edge['relation'] | ''
                         })
                       }
                     >
+                      <option value="">Select relation</option>
                       {relations.map((relation) => (
                         <option key={relation} value={relation}>
                           {relation}
@@ -913,7 +1078,7 @@ export default function EdgesAdminPage() {
                   <div className="admin-row__actions admin-row__actions--form">
                     <div className="button-row">
                       <button type="button" onClick={() => saveDraft(draft)}>
-                        Update
+                        Save
                       </button>
                       <button
                         type="button"
@@ -928,8 +1093,22 @@ export default function EdgesAdminPage() {
               ))
             ) : (
               <div className="admin-toolbar">
+                <select
+                  className="admin-toolbar__select"
+                  aria-label="Filter edge search field"
+                  value={edgeSearchField}
+                  onChange={(event) =>
+                    setEdgeSearchField(
+                      event.target.value as 'parent' | 'child' | 'relation'
+                    )
+                  }
+                >
+                  <option value="parent">Parent</option>
+                  <option value="child">Child</option>
+                  <option value="relation">Relation</option>
+                </select>
                 <input
-                  placeholder="Search by parent/child name"
+                  placeholder="Search edges"
                   value={edgeSearch}
                   onChange={(event) => setEdgeSearch(event.target.value)}
                 />
@@ -1011,7 +1190,7 @@ export default function EdgesAdminPage() {
           <>
             <div className="admin-scroll">
               {filteredEdges.length > 0 && (
-                <div className="row review-footer admin-row admin-row--header">
+                <div className="row review-footer admin-row admin-row--header admin-row--data-edge">
                   <div>Parent</div>
                   <div>Child</div>
                   <div>Relation</div>
@@ -1023,7 +1202,7 @@ export default function EdgesAdminPage() {
                 const child = nodeMap.get(edge.child_id);
                 return (
                   <div
-                    className="row review-footer admin-row admin-row--data admin-row--clickable"
+                    className="row review-footer admin-row admin-row--data admin-row--data-edge admin-row--clickable"
                     key={`${edge.parent_id}-${edge.child_id}-${edge.relation}-${index}`}
                     onClick={() => startEditEdge(edge)}
                   >

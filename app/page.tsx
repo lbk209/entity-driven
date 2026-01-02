@@ -23,6 +23,7 @@ export default function HomePage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [filterEntity, setFilterEntity] = useState('');
   const [filterUser, setFilterUser] = useState('');
+  const [showEntitySuggestions, setShowEntitySuggestions] = useState(false);
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
 
@@ -102,24 +103,49 @@ export default function HomePage() {
         <section className="section">
           <label htmlFor="entity-search">Filter by linked entity</label>
           <div className="filter-row">
-            <input
-              id="entity-search"
-              placeholder="Type entity name"
-              value={filterEntity}
-              onChange={(event) => setFilterEntity(event.target.value)}
-              list="entity-suggestions"
-            />
+            <div className="entity-input-wrap">
+              <input
+                id="entity-search"
+                placeholder="Type entity name"
+                value={filterEntity}
+                onChange={(event) => {
+                  setFilterEntity(event.target.value);
+                  setShowEntitySuggestions(true);
+                }}
+                onFocus={() => setShowEntitySuggestions(true)}
+                onBlur={() => setShowEntitySuggestions(false)}
+                autoComplete="off"
+              />
+              {showEntitySuggestions && (
+                <div className="entity-suggestions">
+                  {entityNames
+                    .filter((name) => {
+                      if (!filterEntity.trim()) return true;
+                      return name.toLowerCase().includes(filterEntity.toLowerCase());
+                    })
+                    .slice(0, 20)
+                    .map((name) => (
+                      <button
+                        type="button"
+                        key={name}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          setFilterEntity(name);
+                          setShowEntitySuggestions(false);
+                        }}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
             {(filterEntity.trim() || filterUser.trim()) && (
               <button className="clear-button" type="button" onClick={handleClearFilters}>
                 Clear
               </button>
             )}
           </div>
-          <datalist id="entity-suggestions">
-            {entityNames.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
           <small>Filtering only matches linked entities, not review text.</small>
           {filterUser.trim() && (
             <small>Filtering by user: {filterUser.trim()}</small>

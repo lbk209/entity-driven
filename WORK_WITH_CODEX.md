@@ -65,7 +65,11 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Admin page for nodes/edges/aliases management at `/admin` with merge workflow.
 - Review edit supports delete with user/password confirmation.
 - Notebook for data review: `review_app_sqlite.ipynb`.
-- Admin page behavior: tabs for nodes/edges/aliases are a minimal underline style, tabs + active form/search live in a fixed header, edit/insert forms replace the search/insert row, list rows scroll/snap in their own panel, delete requires confirm (stronger if referenced), edit can switch by clicking another row, and rows truncate long values for alignment.
+- Admin page behavior: tabs for nodes/edges/aliases are a minimal underline style, tabs + active form/search live in a fixed header, edit/insert forms replace the search/insert row, list rows scroll/snap in their own panel, delete requires confirm (stronger if referenced), edit can switch by clicking another row, rows truncate long values for alignment, and edge list columns now keep parent/child widths consistent.
+- Admin nodes: search filter supports field selection; insert forms keep open after save; draft selects show gray placeholder text; edit cancel buttons are last in row; node type inputs use inline suggestions populated from existing types.
+- Admin aliases: search filter supports alias/node selection; insert forms keep open after save; draft node select uses a placeholder.
+- Admin edges: search filter supports parent/child/relation selection; insert forms keep open after save; draft parent/child/relation selects use placeholders.
+- Entity Reviews filter: search uses a custom suggestion dropdown with max-height styling; suggestions show on focus and filter as you type.
 
 ## Schema
 
