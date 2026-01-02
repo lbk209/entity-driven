@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type NodeOption = {
   id: number;
@@ -54,6 +54,8 @@ export default function EdgesAdminPage() {
   const [edgeSearch, setEdgeSearch] = useState('');
   const [aliasSearch, setAliasSearch] = useState('');
   const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
+  const [stickyHeight, setStickyHeight] = useState(0);
+  const stickyRef = useRef<HTMLDivElement | null>(null);
 
   const nodeMap = useMemo(() => {
     const map = new Map<number, NodeOption>();
@@ -117,6 +119,20 @@ export default function EdgesAdminPage() {
 
   useEffect(() => {
     loadAliases().catch(() => setAliases([]));
+  }, []);
+
+  useEffect(() => {
+    const stickyNode = stickyRef.current;
+    if (!stickyNode) return;
+    const updateHeight = () => {
+      const nextHeight = stickyNode.offsetHeight;
+      setStickyHeight(nextHeight);
+    };
+    updateHeight();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(stickyNode);
+    return () => observer.disconnect();
   }, []);
 
   function addNodeDraft() {
@@ -478,15 +494,15 @@ export default function EdgesAdminPage() {
   }
 
   return (
-    <section className="section">
-      <div className="page-header">
-        <div>
-          <h1>Admin</h1>
-          <small>Manage nodes and relationships.</small>
+    <>
+      <div className="sticky-panel" ref={stickyRef}>
+        <div className="page-header">
+          <div>
+            <h1>Admin</h1>
+            <small>Manage nodes and relationships.</small>
+          </div>
         </div>
-      </div>
 
-      <div className="section">
         <div className="admin-tabs" role="tablist" aria-label="Admin sections">
           <button
             type="button"
@@ -496,7 +512,6 @@ export default function EdgesAdminPage() {
             onClick={() => setActiveTab('nodes')}
           >
             <strong>Nodes</strong>
-            <span>Manage node rows</span>
           </button>
           <button
             type="button"
@@ -506,7 +521,6 @@ export default function EdgesAdminPage() {
             onClick={() => setActiveTab('aliases')}
           >
             <strong>Aliases</strong>
-            <span>Manage alias rows</span>
           </button>
           <button
             type="button"
@@ -516,26 +530,12 @@ export default function EdgesAdminPage() {
             onClick={() => setActiveTab('edges')}
           >
             <strong>Edges</strong>
-            <span>Manage relationships</span>
           </button>
         </div>
-      </div>
 
-      {activeTab === 'nodes' && (
-        <>
-          <div className="section">
-            <h2>Nodes</h2>
-            <div className="admin-toolbar">
-              <input
-                placeholder="Search node name"
-                value={nodeSearch}
-                onChange={(event) => setNodeSearch(event.target.value)}
-              />
-              <button type="button" onClick={addNodeDraft} disabled={nodeDrafts.length > 0 || !!editNode}>
-                Insert node
-              </button>
-            </div>
-            {editNode && (
+        {activeTab === 'nodes' && (
+          <>
+            {editNode ? (
               <div className="row review-footer admin-row admin-row--form admin-row--form-node admin-form">
                 <div>
                   <input
@@ -560,7 +560,7 @@ export default function EdgesAdminPage() {
                 <div className="admin-row__actions admin-row__actions--form admin-row__actions--node">
                   <div className="button-row button-row--node-actions">
                     <button type="button" onClick={() => saveEditNode(editNode)}>
-                      Save
+                      Update
                     </button>
                     <button
                       type="button"
@@ -601,95 +601,70 @@ export default function EdgesAdminPage() {
                   </div>
                 </div>
               </div>
-            )}
-            {nodeDrafts.length === 0 && <small>No pending node inserts.</small>}
-            {nodeDrafts.map((draft) => (
-              <div
-                className="row review-footer admin-row admin-row--form admin-row--form-node admin-form"
-                key={draft.draftId}
-              >
-                <div>
-                  <input
-                    aria-label="Node name"
-                    placeholder="Name"
-                    value={draft.name}
-                    onChange={(event) =>
-                      updateNodeDraft(draft.draftId, { name: event.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <input
-                    aria-label="Node type"
-                    placeholder="Type"
-                    value={draft.type}
-                    onChange={(event) =>
-                      updateNodeDraft(draft.draftId, { type: event.target.value })
-                    }
-                  />
-                </div>
-                <div className="admin-row__actions admin-row__actions--form">
-                  <div className="button-row">
-                    <button type="button" onClick={() => saveNodeDraft(draft)}>
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      className="button-link button-link--ghost"
-                      onClick={() => removeNodeDraft(draft.draftId)}
-                    >
-                      Cancel
-                    </button>
+            ) : nodeDrafts.length > 0 ? (
+              nodeDrafts.map((draft) => (
+                <div
+                  className="row review-footer admin-row admin-row--form admin-row--form-node admin-form"
+                  key={draft.draftId}
+                >
+                  <div>
+                    <input
+                      aria-label="Node name"
+                      placeholder="Name"
+                      value={draft.name}
+                      onChange={(event) =>
+                        updateNodeDraft(draft.draftId, { name: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <input
+                      aria-label="Node type"
+                      placeholder="Type"
+                      value={draft.type}
+                      onChange={(event) =>
+                        updateNodeDraft(draft.draftId, { type: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="admin-row__actions admin-row__actions--form">
+                    <div className="button-row">
+                      <button type="button" onClick={() => saveNodeDraft(draft)}>
+                        Update
+                      </button>
+                      <button
+                        type="button"
+                        className="button-link button-link--ghost"
+                        onClick={() => removeNodeDraft(draft.draftId)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="section">
-            <h2>Existing nodes</h2>
-            {filteredNodes.length > 0 && (
-              <div className="row review-footer admin-row admin-row--header">
-                <div>Id</div>
-                <div>Name</div>
-                <div>Type</div>
+              ))
+            ) : (
+              <div className="admin-toolbar">
+                <input
+                  placeholder="Search node name"
+                  value={nodeSearch}
+                  onChange={(event) => setNodeSearch(event.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={addNodeDraft}
+                  disabled={nodeDrafts.length > 0 || !!editNode}
+                >
+                  Insert node
+                </button>
               </div>
             )}
-            {filteredNodes.length === 0 && <small>No nodes found.</small>}
-            {filteredNodes.map((node) => (
-              <div
-                className="row review-footer admin-row admin-row--data admin-row--clickable"
-                key={`${node.id}-${node.name}-${node.type}`}
-                onClick={() => startEditNode(node)}
-              >
-                <div>{node.id}</div>
-                <div>{node.name}</div>
-                <div>{node.type}</div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      {activeTab === 'aliases' && (
-        <>
-          <div className="section">
-            <h2>Aliases</h2>
-            <div className="admin-toolbar">
-              <input
-                placeholder="Search alias or node name"
-                value={aliasSearch}
-                onChange={(event) => setAliasSearch(event.target.value)}
-              />
-              <button
-                type="button"
-                onClick={addAliasDraft}
-                disabled={aliasDrafts.length > 0 || !!editAlias}
-              >
-                Insert alias
-              </button>
-            </div>
-            {editAlias && (
+        {activeTab === 'aliases' && (
+          <>
+            {editAlias ? (
               <div className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form">
                 <div>
                   <input
@@ -726,7 +701,7 @@ export default function EdgesAdminPage() {
                 <div className="admin-row__actions admin-row__actions--form">
                   <div className="button-row">
                     <button type="button" onClick={() => saveEditAlias(editAlias)}>
-                      Save
+                      Update
                     </button>
                     <button
                       type="button"
@@ -741,100 +716,77 @@ export default function EdgesAdminPage() {
                   </div>
                 </div>
               </div>
-            )}
-            {aliasDrafts.length === 0 && <small>No pending alias inserts.</small>}
-            {aliasDrafts.map((draft) => (
-              <div
-                className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form"
-                key={draft.draftId}
-              >
-                <div>
-                  <input
-                    aria-label="Alias"
-                    placeholder="Alias"
-                    value={draft.alias}
-                    onChange={(event) =>
-                      updateAliasDraft(draft.draftId, { alias: event.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <select
-                    aria-label="Canonical node"
-                    value={draft.node_id}
-                    onChange={(event) =>
-                      updateAliasDraft(draft.draftId, {
-                        node_id: Number(event.target.value)
-                      })
-                    }
-                  >
-                    {nodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.name} ({node.type})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="admin-row__actions admin-row__actions--form">
-                  <div className="button-row">
-                    <button type="button" onClick={() => saveAliasDraft(draft)}>
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      className="button-link button-link--ghost"
-                      onClick={() => removeAliasDraft(draft.draftId)}
+            ) : aliasDrafts.length > 0 ? (
+              aliasDrafts.map((draft) => (
+                <div
+                  className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form"
+                  key={draft.draftId}
+                >
+                  <div>
+                    <input
+                      aria-label="Alias"
+                      placeholder="Alias"
+                      value={draft.alias}
+                      onChange={(event) =>
+                        updateAliasDraft(draft.draftId, { alias: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <select
+                      aria-label="Canonical node"
+                      value={draft.node_id}
+                      onChange={(event) =>
+                        updateAliasDraft(draft.draftId, {
+                          node_id: Number(event.target.value)
+                        })
+                      }
                     >
-                      Cancel
-                    </button>
+                      {nodes.map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {node.name} ({node.type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="admin-row__actions admin-row__actions--form">
+                    <div className="button-row">
+                      <button type="button" onClick={() => saveAliasDraft(draft)}>
+                        Update
+                      </button>
+                      <button
+                        type="button"
+                        className="button-link button-link--ghost"
+                        onClick={() => removeAliasDraft(draft.draftId)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="section">
-            <h2>Existing aliases</h2>
-            {filteredAliases.length > 0 && (
-              <div className="row review-footer admin-row admin-row--header admin-row--data-alias">
-                <div>Alias</div>
-                <div>Canonical node</div>
+              ))
+            ) : (
+              <div className="admin-toolbar">
+                <input
+                  placeholder="Search alias or node name"
+                  value={aliasSearch}
+                  onChange={(event) => setAliasSearch(event.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={addAliasDraft}
+                  disabled={aliasDrafts.length > 0 || !!editAlias}
+                >
+                  Insert alias
+                </button>
               </div>
             )}
-            {filteredAliases.length === 0 && <small>No aliases found.</small>}
-            {filteredAliases.map((alias) => {
-              const node = nodeMap.get(alias.node_id);
-              const nodeLabel = node ? `${node.name} (${node.type})` : alias.node_id;
-              return (
-                <div
-                  className="row review-footer admin-row admin-row--data admin-row--data-alias admin-row--clickable"
-                  key={alias.alias}
-                  onClick={() => startEditAlias(alias)}
-                >
-                  <div>{alias.alias}</div>
-                  <div>{nodeLabel}</div>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      {activeTab === 'edges' && (
-        <>
-          <div className="section">
-            <h2>Edges</h2>
-            <div className="admin-toolbar">
-              <input
-                placeholder="Search by parent/child name"
-                value={edgeSearch}
-                onChange={(event) => setEdgeSearch(event.target.value)}
-              />
-              <button type="button" onClick={addDraftRow} disabled={drafts.length > 0 || !!editEdge}>
-                Insert edge
-              </button>
-            </div>
-            {editEdge && (
+        {activeTab === 'edges' && (
+          <>
+            {editEdge ? (
               <div className="row review-footer admin-row admin-row--form admin-form">
                 <div>
                   <select
@@ -890,7 +842,7 @@ export default function EdgesAdminPage() {
                 <div className="admin-row__actions admin-row__actions--form">
                   <div className="button-row">
                     <button type="button" onClick={() => saveEditEdge(editEdge)}>
-                      Save
+                      Update
                     </button>
                     <button
                       type="button"
@@ -905,112 +857,190 @@ export default function EdgesAdminPage() {
                   </div>
                 </div>
               </div>
-            )}
-            {drafts.length === 0 && <small>No pending inserts.</small>}
-            {drafts.map((draft) => (
-              <div
-                className="row review-footer admin-row admin-row--form admin-form"
-                key={draft.draftId}
-              >
-                <div>
-                  <select
-                    aria-label="Parent node"
-                    value={draft.parent_id}
-                    onChange={(event) =>
-                      updateDraft(draft.draftId, { parent_id: Number(event.target.value) })
-                    }
-                  >
-                    {nodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.name} ({node.type})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <select
-                    aria-label="Child node"
-                    value={draft.child_id}
-                    onChange={(event) =>
-                      updateDraft(draft.draftId, { child_id: Number(event.target.value) })
-                    }
-                  >
-                    {nodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.name} ({node.type})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <select
-                    aria-label="Relation"
-                    value={draft.relation}
-                    onChange={(event) =>
-                      updateDraft(draft.draftId, {
-                        relation: event.target.value as Edge['relation']
-                      })
-                    }
-                  >
-                    {relations.map((relation) => (
-                      <option key={relation} value={relation}>
-                        {relation}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="admin-row__actions admin-row__actions--form">
-                  <div className="button-row">
-                    <button type="button" onClick={() => saveDraft(draft)}>
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      className="button-link button-link--ghost"
-                      onClick={() => removeDraft(draft.draftId)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="section">
-            <h2>Existing edges</h2>
-            {filteredEdges.length > 0 && (
-              <div className="row review-footer admin-row admin-row--header">
-                <div>Parent</div>
-                <div>Child</div>
-                <div>Relation</div>
-              </div>
-            )}
-            {filteredEdges.length === 0 && <small>No edges found.</small>}
-            {filteredEdges.map((edge, index) => {
-              const parent = nodeMap.get(edge.parent_id);
-              const child = nodeMap.get(edge.child_id);
-              return (
+            ) : drafts.length > 0 ? (
+              drafts.map((draft) => (
                 <div
-                  className="row review-footer admin-row admin-row--data admin-row--clickable"
-                  key={`${edge.parent_id}-${edge.child_id}-${edge.relation}-${index}`}
-                  onClick={() => startEditEdge(edge)}
+                  className="row review-footer admin-row admin-row--form admin-form"
+                  key={draft.draftId}
                 >
                   <div>
-                    {parent ? `${parent.name} (${parent.type})` : edge.parent_id}
+                    <select
+                      aria-label="Parent node"
+                      value={draft.parent_id}
+                      onChange={(event) =>
+                        updateDraft(draft.draftId, { parent_id: Number(event.target.value) })
+                      }
+                    >
+                      {nodes.map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {node.name} ({node.type})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
-                    {child ? `${child.name} (${child.type})` : edge.child_id}
+                    <select
+                      aria-label="Child node"
+                      value={draft.child_id}
+                      onChange={(event) =>
+                        updateDraft(draft.draftId, { child_id: Number(event.target.value) })
+                      }
+                    >
+                      {nodes.map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {node.name} ({node.type})
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div>{edge.relation}</div>
+                  <div>
+                    <select
+                      aria-label="Relation"
+                      value={draft.relation}
+                      onChange={(event) =>
+                        updateDraft(draft.draftId, {
+                          relation: event.target.value as Edge['relation']
+                        })
+                      }
+                    >
+                      {relations.map((relation) => (
+                        <option key={relation} value={relation}>
+                          {relation}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="admin-row__actions admin-row__actions--form">
+                    <div className="button-row">
+                      <button type="button" onClick={() => saveDraft(draft)}>
+                        Update
+                      </button>
+                      <button
+                        type="button"
+                        className="button-link button-link--ghost"
+                        onClick={() => removeDraft(draft.draftId)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-        </>
-      )}
+              ))
+            ) : (
+              <div className="admin-toolbar">
+                <input
+                  placeholder="Search by parent/child name"
+                  value={edgeSearch}
+                  onChange={(event) => setEdgeSearch(event.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={addDraftRow}
+                  disabled={drafts.length > 0 || !!editEdge}
+                >
+                  Insert edge
+                </button>
+              </div>
+            )}
+          </>
+        )}
 
-      {status && <small>{status}</small>}
-    </section>
+        {status && <small>{status}</small>}
+      </div>
+      <div className="sticky-spacer" style={{ height: stickyHeight }} aria-hidden="true" />
+
+      <section
+        className="section section--admin"
+        style={{ '--sticky-height': `${stickyHeight}px` } as React.CSSProperties}
+      >
+        {activeTab === 'nodes' && (
+          <>
+            <div className="admin-scroll">
+              {filteredNodes.length > 0 && (
+                <div className="row review-footer admin-row admin-row--header">
+                  <div>Id</div>
+                  <div>Name</div>
+                  <div>Type</div>
+                </div>
+              )}
+              {filteredNodes.length === 0 && <small>No nodes found.</small>}
+              {filteredNodes.map((node) => (
+                <div
+                  className="row review-footer admin-row admin-row--data admin-row--clickable"
+                  key={`${node.id}-${node.name}-${node.type}`}
+                  onClick={() => startEditNode(node)}
+                >
+                  <div>{node.id}</div>
+                  <div>{node.name}</div>
+                  <div>{node.type}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {activeTab === 'aliases' && (
+          <>
+            <div className="admin-scroll">
+              {filteredAliases.length > 0 && (
+                <div className="row review-footer admin-row admin-row--header admin-row--data-alias">
+                  <div>Alias</div>
+                  <div>Canonical node</div>
+                </div>
+              )}
+              {filteredAliases.length === 0 && <small>No aliases found.</small>}
+              {filteredAliases.map((alias) => {
+                const node = nodeMap.get(alias.node_id);
+                const nodeLabel = node ? `${node.name} (${node.type})` : alias.node_id;
+                return (
+                  <div
+                    className="row review-footer admin-row admin-row--data admin-row--data-alias admin-row--clickable"
+                    key={alias.alias}
+                    onClick={() => startEditAlias(alias)}
+                  >
+                    <div>{alias.alias}</div>
+                    <div>{nodeLabel}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {activeTab === 'edges' && (
+          <>
+            <div className="admin-scroll">
+              {filteredEdges.length > 0 && (
+                <div className="row review-footer admin-row admin-row--header">
+                  <div>Parent</div>
+                  <div>Child</div>
+                  <div>Relation</div>
+                </div>
+              )}
+              {filteredEdges.length === 0 && <small>No edges found.</small>}
+              {filteredEdges.map((edge, index) => {
+                const parent = nodeMap.get(edge.parent_id);
+                const child = nodeMap.get(edge.child_id);
+                return (
+                  <div
+                    className="row review-footer admin-row admin-row--data admin-row--clickable"
+                    key={`${edge.parent_id}-${edge.child_id}-${edge.relation}-${index}`}
+                    onClick={() => startEditEdge(edge)}
+                  >
+                    <div>
+                      {parent ? `${parent.name} (${parent.type})` : edge.parent_id}
+                    </div>
+                    <div>
+                      {child ? `${child.name} (${child.type})` : edge.child_id}
+                    </div>
+                    <div>{edge.relation}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </section>
+    </>
   );
 }

@@ -57,7 +57,7 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - `.gitignore` excludes `node_modules/`, `.next/`, `.next.bak/`, and `data/app.sqlite`.
 - Passwords are plain text (testing only).
 - Review updates record `updated_at` and list sorting uses updated time.
-- Review list shows real user IDs, two-line layout, and entity badges.
+- Review list shows real user IDs, entity badges, and uses a snap-scrolling list without a section header.
 - Entity picker uses inline chips, autocomplete suggestions, and a collapse toggle.
 - Review details show entity badges before content with an edit action.
 - Schema now uses canonical `nodes`, `entity_aliases`, and `review_entity.alias`.
@@ -65,7 +65,7 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Admin page for nodes/edges/aliases management at `/admin` with merge workflow.
 - Review edit supports delete with user/password confirmation.
 - Notebook for data review: `review_app_sqlite.ipynb`.
-- Admin page behavior: tabs for nodes/edges, search + insert toolbar, insert/edit forms appear under search, rows are clickable to load edit form, delete requires confirm (stronger if referenced), edit can switch by clicking another row, and rows truncate long values for alignment.
+- Admin page behavior: tabs for nodes/edges/aliases are a minimal underline style, tabs + active form/search live in a fixed header, edit/insert forms replace the search/insert row, list rows scroll/snap in their own panel, delete requires confirm (stronger if referenced), edit can switch by clicking another row, and rows truncate long values for alignment.
 
 ## Schema
 
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS review_entity (
 
 - Admin UI path: `/admin`
 - Tables: `user`, `review`, `nodes`, `entity_aliases`, `edges`, `review_entity`
-- Nodes/edges/aliases use the same inline form layout as insert, with Save/Cancel/Delete
+- Nodes/edges/aliases use the same inline form layout as insert, with Update/Cancel/Delete
 - Delete confirmation always appears; if referenced by reviews/edges/aliases, message is stronger
 - Merge nodes reassigns aliases, reviews, and edges in a single transaction
 - Clicking a different row replaces the current edit form
