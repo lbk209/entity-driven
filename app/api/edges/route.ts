@@ -79,11 +79,15 @@ export async function POST(request: Request) {
   }
 
   const db = getDb();
-  db
+  const result = db
     .prepare(
       'INSERT OR IGNORE INTO edges (parent_id, child_id, relation) VALUES (?, ?, ?)'
     )
     .run(payload.parentId, payload.childId, payload.relation);
+
+  if (result.changes === 0) {
+    return NextResponse.json({ error: 'edge already exists' }, { status: 409 });
+  }
 
   return NextResponse.json({ ok: true });
 }

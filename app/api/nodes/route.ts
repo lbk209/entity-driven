@@ -67,6 +67,12 @@ export async function POST(request: Request) {
 
   const db = getDb();
   try {
+    const exists = db
+      .prepare('SELECT 1 FROM nodes WHERE name = ? AND type = ?')
+      .get(payload.name, payload.type);
+    if (exists) {
+      return NextResponse.json({ error: 'node already exists' }, { status: 409 });
+    }
     const tx = db.transaction(() => {
       const result = db
         .prepare('INSERT INTO nodes (name, type) VALUES (?, ?)')
@@ -78,6 +84,10 @@ export async function POST(request: Request) {
     });
     tx();
   } catch (error) {
+    const message = error instanceof Error ? error.message : null;
+    if (message && message.includes('UNIQUE constraint failed: nodes.name, nodes.type')) {
+      return NextResponse.json({ error: 'node already exists' }, { status: 409 });
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'failed to insert node' },
       { status: 400 }

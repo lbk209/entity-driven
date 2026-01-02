@@ -166,6 +166,10 @@ export default function EdgesAdminPage() {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    setStatus('');
+  }, [activeTab]);
+
   function addNodeDraft() {
     if (nodeDrafts.length > 0 || editNode) return;
     const draft: DraftNode = {
@@ -256,7 +260,8 @@ export default function EdgesAdminPage() {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setStatus(data.error || 'Failed to insert node.');
+      const message = data.error || 'Failed to insert node.';
+      setStatus(message);
       return;
     }
     setNodeDrafts((prev) =>
@@ -288,7 +293,8 @@ export default function EdgesAdminPage() {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setStatus(data.error || 'Failed to insert alias.');
+      const message = data.error || 'Failed to insert alias.';
+      setStatus(message);
       return;
     }
     setAliasDrafts((prev) =>
@@ -386,7 +392,8 @@ export default function EdgesAdminPage() {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setStatus(data.error || 'Failed to insert edge.');
+      const message = data.error || 'Failed to insert edge.';
+      setStatus(message);
       return;
     }
     setDrafts((prev) =>
@@ -714,30 +721,30 @@ export default function EdgesAdminPage() {
                       <input
                         aria-label="Node type"
                         placeholder="Type"
-                      value={draft.type}
-                      onChange={(event) => {
-                        updateNodeDraft(draft.draftId, { type: event.target.value });
-                        setNodeTypeSuggestTarget('draft');
-                        setNodeTypeFilterActive(true);
-                      }}
-                      onFocus={() => {
-                        setNodeTypeSuggestTarget('draft');
-                        setNodeTypeFilterActive(false);
-                      }}
-                      onBlur={() => {
-                        setNodeTypeSuggestTarget(null);
-                        setNodeTypeFilterActive(false);
-                      }}
-                    />
-                    {nodeTypeSuggestTarget === 'draft' && nodeTypes.length > 0 && (
-                      <div className="admin-type-suggestions">
-                        {nodeTypes
-                          .filter((type) => {
-                            const term = draft.type.trim().toLowerCase();
-                            if (!nodeTypeFilterActive || !term) return true;
-                            return type.toLowerCase().includes(term);
-                          })
-                          .map((type) => (
+                        value={draft.type}
+                        onChange={(event) => {
+                          updateNodeDraft(draft.draftId, { type: event.target.value });
+                          setNodeTypeSuggestTarget('draft');
+                          setNodeTypeFilterActive(true);
+                        }}
+                        onFocus={() => {
+                          setNodeTypeSuggestTarget('draft');
+                          setNodeTypeFilterActive(false);
+                        }}
+                        onBlur={() => {
+                          setNodeTypeSuggestTarget(null);
+                          setNodeTypeFilterActive(false);
+                        }}
+                      />
+                      {nodeTypeSuggestTarget === 'draft' && nodeTypes.length > 0 && (
+                        <div className="admin-type-suggestions">
+                          {nodeTypes
+                            .filter((type) => {
+                              const term = draft.type.trim().toLowerCase();
+                              if (!nodeTypeFilterActive || !term) return true;
+                              return type.toLowerCase().includes(term);
+                            })
+                            .map((type) => (
                               <button
                                 type="button"
                                 key={type}
@@ -860,29 +867,27 @@ export default function EdgesAdminPage() {
                   className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form"
                   key={draft.draftId}
                 >
+                <div>
+                  <input
+                    aria-label="Alias"
+                    placeholder="Alias"
+                    value={draft.alias}
+                    onChange={(event) =>
+                      updateAliasDraft(draft.draftId, { alias: event.target.value })
+                    }
+                  />
+                </div>
                   <div>
-                    <input
-                      aria-label="Alias"
-                      placeholder="Alias"
-                      value={draft.alias}
-                      onChange={(event) =>
-                        updateAliasDraft(draft.draftId, { alias: event.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <select
-                      className={draft.node_id ? '' : 'admin-select--placeholder'}
-                      aria-label="Canonical node"
-                      value={draft.node_id ?? ''}
-                      onChange={(event) =>
-                        updateAliasDraft(draft.draftId, {
-                          node_id: event.target.value
-                            ? Number(event.target.value)
-                            : null
-                        })
-                      }
-                    >
+                  <select
+                    className={draft.node_id ? '' : 'admin-select--placeholder'}
+                    aria-label="Canonical node"
+                    value={draft.node_id ?? ''}
+                    onChange={(event) =>
+                      updateAliasDraft(draft.draftId, {
+                        node_id: event.target.value ? Number(event.target.value) : null
+                      })
+                    }
+                  >
                       <option value="">Select node</option>
                       {nodes.map((node) => (
                         <option key={node.id} value={node.id}>
@@ -1016,57 +1021,55 @@ export default function EdgesAdminPage() {
                   className="row review-footer admin-row admin-row--form admin-form"
                   key={draft.draftId}
                 >
-                  <div>
-                    <select
-                      className={draft.parent_id ? '' : 'admin-select--placeholder'}
-                      aria-label="Parent node"
-                      value={draft.parent_id ?? ''}
-                      onChange={(event) =>
-                        updateDraft(draft.draftId, {
-                          parent_id: event.target.value
-                            ? Number(event.target.value)
-                            : null
-                        })
-                      }
-                    >
-                      <option value="">Select parent</option>
-                      {nodes.map((node) => (
-                        <option key={node.id} value={node.id}>
-                          {node.name} ({node.type})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <select
-                      className={draft.child_id ? '' : 'admin-select--placeholder'}
-                      aria-label="Child node"
-                      value={draft.child_id ?? ''}
-                      onChange={(event) =>
-                        updateDraft(draft.draftId, {
-                          child_id: event.target.value ? Number(event.target.value) : null
-                        })
-                      }
-                    >
-                      <option value="">Select child</option>
-                      {nodes.map((node) => (
-                        <option key={node.id} value={node.id}>
-                          {node.name} ({node.type})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <select
-                      className={draft.relation ? '' : 'admin-select--placeholder'}
-                      aria-label="Relation"
-                      value={draft.relation}
-                      onChange={(event) =>
-                        updateDraft(draft.draftId, {
-                          relation: event.target.value as Edge['relation'] | ''
-                        })
-                      }
-                    >
+                <div>
+                  <select
+                    className={draft.parent_id ? '' : 'admin-select--placeholder'}
+                    aria-label="Parent node"
+                    value={draft.parent_id ?? ''}
+                    onChange={(event) =>
+                      updateDraft(draft.draftId, {
+                        parent_id: event.target.value ? Number(event.target.value) : null
+                      })
+                    }
+                  >
+                    <option value="">Select parent</option>
+                    {nodes.map((node) => (
+                      <option key={node.id} value={node.id}>
+                        {node.name} ({node.type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <select
+                    className={draft.child_id ? '' : 'admin-select--placeholder'}
+                    aria-label="Child node"
+                    value={draft.child_id ?? ''}
+                    onChange={(event) =>
+                      updateDraft(draft.draftId, {
+                        child_id: event.target.value ? Number(event.target.value) : null
+                      })
+                    }
+                  >
+                    <option value="">Select child</option>
+                    {nodes.map((node) => (
+                      <option key={node.id} value={node.id}>
+                        {node.name} ({node.type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <select
+                    className={draft.relation ? '' : 'admin-select--placeholder'}
+                    aria-label="Relation"
+                    value={draft.relation}
+                    onChange={(event) =>
+                      updateDraft(draft.draftId, {
+                        relation: event.target.value as Edge['relation'] | ''
+                      })
+                    }
+                  >
                       <option value="">Select relation</option>
                       {relations.map((relation) => (
                         <option key={relation} value={relation}>
@@ -1075,21 +1078,21 @@ export default function EdgesAdminPage() {
                       ))}
                     </select>
                   </div>
-                  <div className="admin-row__actions admin-row__actions--form">
-                    <div className="button-row">
-                      <button type="button" onClick={() => saveDraft(draft)}>
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className="button-link button-link--ghost"
-                        onClick={() => removeDraft(draft.draftId)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                <div className="admin-row__actions admin-row__actions--form">
+                  <div className="button-row">
+                    <button type="button" onClick={() => saveDraft(draft)}>
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="button-link button-link--ghost"
+                      onClick={() => removeDraft(draft.draftId)}
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
+              </div>
               ))
             ) : (
               <div className="admin-toolbar">

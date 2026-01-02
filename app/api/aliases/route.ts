@@ -50,10 +50,20 @@ export async function POST(request: Request) {
 
   const db = getDb();
   try {
+    const exists = db
+      .prepare('SELECT 1 FROM entity_aliases WHERE alias = ?')
+      .get(payload.alias);
+    if (exists) {
+      return NextResponse.json({ error: 'alias already exists' }, { status: 409 });
+    }
     db
       .prepare('INSERT INTO entity_aliases (alias, node_id) VALUES (?, ?)')
       .run(payload.alias, payload.nodeId);
   } catch (error) {
+    const message = error instanceof Error ? error.message : null;
+    if (message && message.includes('UNIQUE constraint failed: entity_aliases.alias')) {
+      return NextResponse.json({ error: 'alias already exists' }, { status: 409 });
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'failed to insert alias' },
       { status: 400 }
