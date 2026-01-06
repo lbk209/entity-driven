@@ -38,6 +38,14 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
     () => entities.map((entity) => entity.name),
     [entities]
   );
+  const suggestionNames = useMemo(() => {
+    const value = entityInput.trim().toLowerCase();
+    if (!value) return [];
+    return entityNames
+      .filter((name) => name.toLowerCase().includes(value))
+      .filter((name) => !selectedEntities.includes(name))
+      .slice(0, 20);
+  }, [entityInput, entityNames, selectedEntities]);
 
   useEffect(() => {
     fetch('/api/entities')
@@ -170,17 +178,18 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
                 placeholder="Type an entity name"
                 className="entity-input"
                 autoComplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={suggestionNames.length > 0}
+                aria-controls="entity-suggestion-list"
               />
-              {entityInput.trim() && (
-                <div className="entity-suggestions">
-                  {entityNames
-                    .filter((name) => name.toLowerCase().includes(entityInput.toLowerCase()))
-                    .filter((name) => !selectedEntities.includes(name))
-                    .slice(0, 20)
-                    .map((name) => (
+              {suggestionNames.length > 0 && (
+                <div className="entity-suggestions" role="listbox" id="entity-suggestion-list">
+                  {suggestionNames.map((name) => (
                       <button
                         type="button"
                         key={name}
+                        role="option"
                         onMouseDown={(event) => {
                           event.preventDefault();
                           addEntitiesFromInput(name);

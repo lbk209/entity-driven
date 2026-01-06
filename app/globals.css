@@ -439,6 +439,20 @@ button {
   min-width: 0;
 }
 
+.review-sentiment {
+  margin: 0 6px 0 2px;
+  font-size: 16px;
+  vertical-align: middle;
+}
+
+.review-sentiment--positive {
+  color: #4CAF50;
+}
+
+.review-sentiment--negative {
+  color: #F44336;
+}
+
 @media (max-width: 640px) {
   .review-preview {
     display: -webkit-box;
@@ -547,15 +561,15 @@ button {
 .entity-input {
   border: none;
   padding: 0;
-  min-width: 180px;
-  flex: 1 1 180px;
-  width: auto;
+  min-width: 0;
+  flex: 1 1 0;
+  width: 100%;
 }
 
 .entity-input-wrap {
   position: relative;
-  flex: 1 1 180px;
-  min-width: 180px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .entity-suggestions {

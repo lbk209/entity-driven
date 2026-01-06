@@ -58,9 +58,13 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Passwords are plain text (testing only).
 - Review updates record `updated_at` and list sorting uses updated time.
 - Review list shows real user IDs, entity badges, and uses a snap-scrolling list without a section header.
+- Review list can show sentiment emoji (positive/negative only) between entity badges and preview text, derived from latest `review_entity_sentiment` row.
+- Sentiment display gated by `REVIEW_SENTIMENT_CONFIDENCE_MIN` env var on the reviews API.
 - Entity picker uses inline chips, autocomplete suggestions, and a collapse toggle.
 - Review details show entity badges before content with an edit action.
 - Schema now uses canonical `nodes`, `entity_aliases`, and `review_entity.alias`.
+- `review_entity` now has its own `id` primary key with `review_id` + `node_id` unique.
+- `review_entity_sentiment` stores raw sentiment analysis outputs per review entity.
 - Search/filter resolves via `entity_aliases` and filters on `review_entity.node_id` only.
 - Admin page for nodes/edges/aliases management at `/admin` with merge workflow.
 - Review edit supports delete with user/password confirmation.
@@ -119,19 +123,32 @@ CREATE TABLE IF NOT EXISTS edges (
 );
 
 CREATE TABLE IF NOT EXISTS review_entity (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   review_id INTEGER NOT NULL,
   node_id INTEGER NOT NULL,
   alias TEXT NOT NULL,
-  PRIMARY KEY (review_id, node_id),
+  UNIQUE(review_id, node_id),
   FOREIGN KEY (review_id) REFERENCES review(id),
   FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
+CREATE TABLE IF NOT EXISTS review_entity_sentiment (
+  review_entity_id INTEGER NOT NULL,
+  sentiment_raw REAL NOT NULL,
+  confidence REAL NOT NULL,
+  method TEXT NOT NULL,
+  version TEXT,
+  created_at TEXT,
+  PRIMARY KEY (review_entity_id, method, version),
+  FOREIGN KEY (review_entity_id) REFERENCES review_entity(id)
 );
 ```
 
 ## Quick Context (No File Reads Needed)
 
 - Admin UI path: `/admin`
-- Tables: `user`, `review`, `nodes`, `entity_aliases`, `edges`, `review_entity`
+- Tables: `user`, `review`, `nodes`, `entity_aliases`, `edges`, `review_entity`, `review_entity_sentiment`
+- Sentiment storage is raw-only; labels are computed at read time for UI.
 - Nodes/edges/aliases use the same inline form layout as insert, with Update/Cancel/Delete
 - Delete confirmation always appears; if referenced by reviews/edges/aliases, message is stronger
 - Merge nodes reassigns aliases, reviews, and edges in a single transaction

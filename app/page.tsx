@@ -16,6 +16,7 @@ type Review = {
   updated_at: string | null;
   preview: string;
   entities: string[];
+  sentiment?: 'positive' | 'negative';
 };
 
 export default function HomePage() {
@@ -31,6 +32,16 @@ export default function HomePage() {
     () => entities.map((entity) => entity.name),
     [entities]
   );
+  const entitySuggestions = useMemo(() => {
+    const trimmed = filterEntity.trim().toLowerCase();
+    return entityNames
+      .filter((name) => name.trim().length > 0)
+      .filter((name) => {
+        if (!trimmed) return true;
+        return name.toLowerCase().includes(trimmed);
+      })
+      .slice(0, 20);
+  }, [entityNames, filterEntity]);
 
   useEffect(() => {
     fetch('/api/entities')
@@ -116,27 +127,21 @@ export default function HomePage() {
                 onBlur={() => setShowEntitySuggestions(false)}
                 autoComplete="off"
               />
-              {showEntitySuggestions && (
+              {showEntitySuggestions && entitySuggestions.length > 0 && (
                 <div className="entity-suggestions">
-                  {entityNames
-                    .filter((name) => {
-                      if (!filterEntity.trim()) return true;
-                      return name.toLowerCase().includes(filterEntity.toLowerCase());
-                    })
-                    .slice(0, 20)
-                    .map((name) => (
-                      <button
-                        type="button"
-                        key={name}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          setFilterEntity(name);
-                          setShowEntitySuggestions(false);
-                        }}
-                      >
-                        {name}
-                      </button>
-                    ))}
+                  {entitySuggestions.map((name) => (
+                    <button
+                      type="button"
+                      key={name}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setFilterEntity(name);
+                        setShowEntitySuggestions(false);
+                      }}
+                    >
+                      {name}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -180,6 +185,14 @@ export default function HomePage() {
                         {name}
                       </span>
                     ))}
+                    {review.sentiment && (
+                      <span
+                        className={`review-sentiment review-sentiment--${review.sentiment}`}
+                        aria-label={`${review.sentiment} sentiment`}
+                      >
+                        {review.sentiment === 'positive' ? '😊' : '☹️'}
+                      </span>
+                    )}
                     <Link className="review-link" href={`/reviews/${review.id}`}>
                       {review.preview}
                     </Link>

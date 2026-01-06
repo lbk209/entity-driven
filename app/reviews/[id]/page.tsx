@@ -64,7 +64,7 @@ export default function ReviewDetailPage({ params }: { params: { id: string } })
     <>
       <div className="page-header">
         <div>
-          <h1>Review #{review.id}</h1>
+          <h1>Review Detail</h1>
           <small>
             user #{review.user_id} ·{' '}
             {new Date(review.updated_at ?? review.created_at).toLocaleString()}

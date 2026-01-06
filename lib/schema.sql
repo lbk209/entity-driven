@@ -43,10 +43,22 @@ BEGIN
 END;
 
 CREATE TABLE IF NOT EXISTS review_entity (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   review_id INTEGER NOT NULL,
   node_id INTEGER NOT NULL,
   alias TEXT NOT NULL,
-  PRIMARY KEY (review_id, node_id),
+  UNIQUE(review_id, node_id),
   FOREIGN KEY (review_id) REFERENCES review(id),
   FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
+CREATE TABLE IF NOT EXISTS review_entity_sentiment (
+  review_entity_id INTEGER NOT NULL,
+  sentiment_raw REAL NOT NULL,
+  confidence REAL NOT NULL,
+  method TEXT NOT NULL,
+  version TEXT,
+  created_at TEXT,
+  PRIMARY KEY (review_entity_id, method, version),
+  FOREIGN KEY (review_entity_id) REFERENCES review_entity(id)
 );
