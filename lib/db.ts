@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS edge_relations (
   relation TEXT PRIMARY KEY,
   is_transitive INTEGER,
   default_weight REAL,
+  description TEXT,
   allowed_parent_types TEXT NOT NULL,
   allowed_child_types TEXT NOT NULL
 );
@@ -123,6 +124,7 @@ export function getDb() {
       relation TEXT PRIMARY KEY,
       is_transitive INTEGER,
       default_weight REAL,
+      description TEXT,
       allowed_parent_types TEXT NOT NULL,
       allowed_child_types TEXT NOT NULL
     );
@@ -136,6 +138,9 @@ export function getDb() {
   const hasAllowedChildTypes = edgeRelationColumns.some(
     (column) => column.name === 'allowed_child_types'
   );
+  const hasDescription = edgeRelationColumns.some(
+    (column) => column.name === 'description'
+  );
   if (!hasAllowedParentTypes) {
     db.exec(
       "ALTER TABLE edge_relations ADD COLUMN allowed_parent_types TEXT NOT NULL DEFAULT '[]';"
@@ -145,6 +150,9 @@ export function getDb() {
     db.exec(
       "ALTER TABLE edge_relations ADD COLUMN allowed_child_types TEXT NOT NULL DEFAULT '[]';"
     );
+  }
+  if (!hasDescription) {
+    db.exec("ALTER TABLE edge_relations ADD COLUMN description TEXT;");
   }
   const hasNodes = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'")
@@ -201,10 +209,11 @@ export function getDb() {
         relation,
         is_transitive,
         default_weight,
+        description,
         allowed_parent_types,
         allowed_child_types
       )
-      SELECT DISTINCT relation, 0, 1, ?, ? FROM edges;
+      SELECT DISTINCT relation, 0, 1, NULL, ?, ? FROM edges;
     `
     )
     .run(allowedTypesJson, allowedTypesJson);
@@ -218,6 +227,29 @@ export function getDb() {
       `
       )
       .run(allowedTypesJson, allowedTypesJson);
+  }
+  const relationDescriptions: Record<string, string> = {
+    contains:
+      'Indicates structural, spatial, or conceptual inclusion where one entity fully contains another. The relation is transitive.',
+    sells:
+      'Indicates a direct sales relationship where a vendor, restaurant, or venue sells a specific product or menu item. This relation is not transitive.',
+    operates:
+      'Indicates that a brand operates or manages a specific vendor, restaurant, or venue. This does not imply direct sales by the brand itself.',
+    produces:
+      'Indicates that a brand manufactures or creates a product or menu item, independent of where it is sold.',
+    located_in:
+      'Indicates the physical location of an entity within a geographic area. The relation is transitive across locations.'
+  };
+  for (const [relation, description] of Object.entries(relationDescriptions)) {
+    db
+      .prepare(
+        `
+        UPDATE edge_relations
+        SET description = ?
+        WHERE relation = ? AND (description IS NULL OR description = '')
+      `
+      )
+      .run(description, relation);
   }
   if (hasNodes?.name && !hasForeignKey(db, 'nodes', 'type', 'node_type_prior', 'node_type')) {
     db.exec('PRAGMA foreign_keys = OFF');

@@ -22,6 +22,7 @@ type EdgeRelation = {
   relation: string;
   is_transitive: number | null;
   default_weight: number | null;
+  description: string | null;
   allowed_parent_types: string[];
   allowed_child_types: string[];
 };
@@ -72,10 +73,100 @@ type EditEdgeRelation = {
   original_relation: string;
   is_transitive: number | null;
   default_weight: number | null;
+  description: string;
   allowed_parent_types: string;
   allowed_child_types: string;
 };
 type EditNodeTypePrior = NodeTypePrior & { original_node_type: string };
+
+function listToString(list: string[]) {
+  return list.join(', ');
+}
+
+function parseTypeList(value: string) {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item);
+}
+
+function TypeMultiSelect({
+  ariaLabel,
+  placeholder,
+  options,
+  value,
+  onChange
+}: {
+  ariaLabel: string;
+  placeholder: string;
+  options: string[];
+  value: string;
+  onChange: (nextValue: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDetailsElement | null>(null);
+  const selected = new Set(parseTypeList(value));
+  const selectedList = options.filter((option) => selected.has(option));
+  const summaryLabel = selectedList.length > 0 ? selectedList.join(', ') : placeholder;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node | null;
+      if (!target || !containerRef.current) return;
+      if (!containerRef.current.contains(target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  function toggleOption(option: string, checked: boolean) {
+    const next = new Set(selected);
+    if (checked) {
+      next.add(option);
+    } else {
+      next.delete(option);
+    }
+    const nextList = options.filter((item) => next.has(item));
+    onChange(listToString(nextList));
+  }
+
+  return (
+    <details className="admin-multiselect" open={isOpen} ref={containerRef}>
+      <summary
+        aria-label={ariaLabel}
+        onClick={(event) => {
+          event.preventDefault();
+          setIsOpen((prev) => !prev);
+        }}
+      >
+        <span className={selectedList.length > 0 ? '' : 'admin-multiselect__placeholder'}>
+          {summaryLabel}
+        </span>
+      </summary>
+      <div className="admin-multiselect__panel">
+        {options.length === 0 ? (
+          <div className="admin-multiselect__empty">No node types available.</div>
+        ) : (
+          options.map((option) => (
+            <label className="admin-multiselect__option" key={option}>
+              <input
+                type="checkbox"
+                checked={selected.has(option)}
+                onChange={(event) => toggleOption(option, event.target.checked)}
+              />
+              <span>{option}</span>
+            </label>
+          ))
+        )}
+      </div>
+    </details>
+  );
+}
 
 export default function EdgesAdminPage() {
   const [nodes, setNodes] = useState<NodeOption[]>([]);
@@ -142,17 +233,6 @@ export default function EdgesAdminPage() {
       .map((relation) => relation.relation)
       .sort((a, b) => a.localeCompare(b));
   }, [edgeRelations]);
-
-  function listToString(list: string[]) {
-    return list.join(', ');
-  }
-
-  function parseTypeList(value: string) {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter((item) => item);
-  }
 
   const filteredNodes = useMemo(() => {
     const term = nodeSearch.trim().toLowerCase();
@@ -290,7 +370,7 @@ export default function EdgesAdminPage() {
       draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       relation: '',
       is_transitive: false,
-      default_weight: '',
+      default_weight: '1',
       allowed_parent_types: '',
       allowed_child_types: ''
     };
@@ -607,6 +687,7 @@ export default function EdgesAdminPage() {
         relation: relation.relation,
         is_transitive: relation.is_transitive ? 1 : 0,
         default_weight: weightValue,
+        description: relation.description,
         allowed_parent_types: allowedParentTypes,
         allowed_child_types: allowedChildTypes,
         original_relation: relation.original_relation
@@ -792,7 +873,8 @@ export default function EdgesAdminPage() {
       is_transitive: relation.is_transitive,
       default_weight: relation.default_weight,
       allowed_parent_types: listToString(relation.allowed_parent_types),
-      allowed_child_types: listToString(relation.allowed_child_types)
+      allowed_child_types: listToString(relation.allowed_child_types),
+      description: relation.description ?? ''
     });
   }
 
@@ -1329,7 +1411,7 @@ export default function EdgesAdminPage() {
         {activeTab === 'edges' && (
           <>
             {editEdge ? (
-              <div className="row review-footer admin-row admin-row--form admin-form">
+              <div className="row review-footer admin-row admin-row--form admin-row--form-edge admin-form">
                 <div>
                   <select
                     aria-label="Parent node"
@@ -1337,23 +1419,6 @@ export default function EdgesAdminPage() {
                     onChange={(event) =>
                       updateEditEdge({
                         parent_id: Number(event.target.value)
-                      })
-                    }
-                  >
-                    {nodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.name} ({node.type})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <select
-                    aria-label="Child node"
-                    value={editEdge.child_id}
-                    onChange={(event) =>
-                      updateEditEdge({
-                        child_id: Number(event.target.value)
                       })
                     }
                   >
@@ -1381,6 +1446,23 @@ export default function EdgesAdminPage() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <select
+                    aria-label="Child node"
+                    value={editEdge.child_id}
+                    onChange={(event) =>
+                      updateEditEdge({
+                        child_id: Number(event.target.value)
+                      })
+                    }
+                  >
+                    {nodes.map((node) => (
+                      <option key={node.id} value={node.id}>
+                        {node.name} ({node.type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="admin-row__actions admin-row__actions--form">
                   <div className="button-row">
                     <button type="button" onClick={() => saveEditEdge(editEdge)}>
@@ -1402,7 +1484,7 @@ export default function EdgesAdminPage() {
             ) : drafts.length > 0 ? (
               drafts.map((draft) => (
                 <div
-                  className="row review-footer admin-row admin-row--form admin-form"
+                  className="row review-footer admin-row admin-row--form admin-row--form-edge admin-form"
                   key={draft.draftId}
                 >
                 <div>
@@ -1426,6 +1508,25 @@ export default function EdgesAdminPage() {
                 </div>
                 <div>
                   <select
+                    className={draft.relation ? '' : 'admin-select--placeholder'}
+                    aria-label="Relation"
+                    value={draft.relation}
+                    onChange={(event) =>
+                      updateDraft(draft.draftId, {
+                        relation: event.target.value
+                      })
+                    }
+                  >
+                    <option value="">Select relation</option>
+                    {relationOptions.map((relation) => (
+                      <option key={relation} value={relation}>
+                        {relation}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <select
                     className={draft.child_id ? '' : 'admin-select--placeholder'}
                     aria-label="Child node"
                     value={draft.child_id ?? ''}
@@ -1442,25 +1543,6 @@ export default function EdgesAdminPage() {
                       </option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <select
-                    className={draft.relation ? '' : 'admin-select--placeholder'}
-                    aria-label="Relation"
-                    value={draft.relation}
-                    onChange={(event) =>
-                      updateDraft(draft.draftId, {
-                        relation: event.target.value
-                      })
-                    }
-                  >
-                      <option value="">Select relation</option>
-                      {relationOptions.map((relation) => (
-                        <option key={relation} value={relation}>
-                          {relation}
-                        </option>
-                      ))}
-                    </select>
                   </div>
                 <div className="admin-row__actions admin-row__actions--form">
                   <div className="button-row">
@@ -1521,7 +1603,7 @@ export default function EdgesAdminPage() {
                   checked={referenceView === 'relations'}
                   onChange={() => setReferenceView('relations')}
                 />
-                <span>Relation</span>
+                <span>Edge relations</span>
               </label>
               <label className="admin-radio-label">
                 <input
@@ -1530,111 +1612,139 @@ export default function EdgesAdminPage() {
                   checked={referenceView === 'priors'}
                   onChange={() => setReferenceView('priors')}
                 />
-                <span>Prior</span>
+                <span>Node type priors</span>
               </label>
             </div>
 
             {referenceView === 'relations' && (
               <>
-                <div className="admin-subsection-title">
-                  <strong>Edge relations</strong>
-                </div>
                 {editEdgeRelation ? (
-                  <div className="row review-footer admin-row admin-row--form admin-row--form-relation admin-form">
-                    <div>
-                      <input
-                        aria-label="Relation"
-                        placeholder="Relation"
-                        value={editEdgeRelation.relation}
-                        onChange={(event) =>
-                          updateEditEdgeRelation({ relation: event.target.value })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <input
-                        aria-label="Allowed parent types"
-                        placeholder="Allowed parent types"
-                        value={editEdgeRelation.allowed_parent_types}
-                        onChange={(event) =>
-                          updateEditEdgeRelation({
-                            allowed_parent_types: event.target.value
-                          })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <input
-                        aria-label="Allowed child types"
-                        placeholder="Allowed child types"
-                        value={editEdgeRelation.allowed_child_types}
-                        onChange={(event) =>
-                          updateEditEdgeRelation({
-                            allowed_child_types: event.target.value
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="admin-checkbox">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(editEdgeRelation.is_transitive)}
-                          onChange={(event) =>
+                  <>
+                    <div className="row review-footer admin-row admin-row--form admin-row--form-relation admin-form">
+                      <div>
+                        <TypeMultiSelect
+                          ariaLabel="Allowed parent types"
+                          placeholder="Select parent types"
+                          options={nodeTypes}
+                          value={editEdgeRelation.allowed_parent_types}
+                          onChange={(nextValue) =>
                             updateEditEdgeRelation({
-                              is_transitive: event.target.checked ? 1 : 0
+                              allowed_parent_types: nextValue
                             })
                           }
                         />
-                        <span>Transitive</span>
-                      </label>
+                      </div>
+                      <div>
+                        <input
+                          aria-label="Relation"
+                          placeholder="Relation"
+                          value={editEdgeRelation.relation}
+                          onChange={(event) =>
+                            updateEditEdgeRelation({ relation: event.target.value })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <TypeMultiSelect
+                          ariaLabel="Allowed child types"
+                          placeholder="Select child types"
+                          options={nodeTypes}
+                          value={editEdgeRelation.allowed_child_types}
+                          onChange={(nextValue) =>
+                            updateEditEdgeRelation({
+                              allowed_child_types: nextValue
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <input
+                          aria-label="Default weight"
+                          placeholder="Default weight"
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={editEdgeRelation.default_weight ?? ''}
+                          onChange={(event) =>
+                            updateEditEdgeRelation({
+                              default_weight: event.target.value
+                                ? Number(event.target.value)
+                                : null
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="admin-checkbox">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(editEdgeRelation.is_transitive)}
+                            onChange={(event) =>
+                              updateEditEdgeRelation({
+                                is_transitive: event.target.checked ? 1 : 0
+                              })
+                            }
+                          />
+                          <span>Transitive</span>
+                        </label>
+                      </div>
+                      <div className="admin-row__actions admin-row__actions--form">
+                        <div className="button-row">
+                          <button
+                            type="button"
+                            onClick={() => saveEditEdgeRelation(editEdgeRelation)}
+                          >
+                            Update
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteEdgeRelation(editEdgeRelation)}
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            className="button-link button-link--ghost"
+                            onClick={cancelEditEdgeRelation}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <input
-                        aria-label="Default weight"
-                        placeholder="Default weight"
-                        type="number"
-                        step="0.01"
-                        value={editEdgeRelation.default_weight ?? ''}
+                    <div className="admin-form">
+                      <textarea
+                        className="admin-textarea--compact"
+                        aria-label="Relation description"
+                        placeholder="Description"
+                        rows={2}
+                        value={editEdgeRelation.description}
                         onChange={(event) =>
-                          updateEditEdgeRelation({
-                            default_weight: event.target.value
-                              ? Number(event.target.value)
-                              : null
-                          })
+                          updateEditEdgeRelation({ description: event.target.value })
                         }
                       />
                     </div>
-                    <div className="admin-row__actions admin-row__actions--form">
-                      <div className="button-row">
-                        <button
-                          type="button"
-                          onClick={() => saveEditEdgeRelation(editEdgeRelation)}
-                        >
-                          Update
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteEdgeRelation(editEdgeRelation)}
-                        >
-                          Delete
-                        </button>
-                        <button
-                          type="button"
-                          className="button-link button-link--ghost"
-                          onClick={cancelEditEdgeRelation}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  </>
                 ) : edgeRelationDrafts.length > 0 ? (
                   edgeRelationDrafts.map((draft) => (
                     <div
                       className="row review-footer admin-row admin-row--form admin-row--form-relation admin-form"
                       key={draft.draftId}
                     >
+                      <div>
+                        <TypeMultiSelect
+                          ariaLabel="Allowed parent types"
+                          placeholder="Select parent types"
+                          options={nodeTypes}
+                          value={draft.allowed_parent_types}
+                          onChange={(nextValue) =>
+                            updateEdgeRelationDraft(draft.draftId, {
+                              allowed_parent_types: nextValue
+                            })
+                          }
+                        />
+                      </div>
                       <div>
                         <input
                           aria-label="Relation"
@@ -1648,25 +1758,30 @@ export default function EdgesAdminPage() {
                         />
                       </div>
                       <div>
-                        <input
-                          aria-label="Allowed parent types"
-                          placeholder="Allowed parent types"
-                          value={draft.allowed_parent_types}
-                          onChange={(event) =>
+                        <TypeMultiSelect
+                          ariaLabel="Allowed child types"
+                          placeholder="Select child types"
+                          options={nodeTypes}
+                          value={draft.allowed_child_types}
+                          onChange={(nextValue) =>
                             updateEdgeRelationDraft(draft.draftId, {
-                              allowed_parent_types: event.target.value
+                              allowed_child_types: nextValue
                             })
                           }
                         />
                       </div>
                       <div>
                         <input
-                          aria-label="Allowed child types"
-                          placeholder="Allowed child types"
-                          value={draft.allowed_child_types}
+                          aria-label="Default weight"
+                          placeholder="Default weight"
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={draft.default_weight}
                           onChange={(event) =>
                             updateEdgeRelationDraft(draft.draftId, {
-                              allowed_child_types: event.target.value
+                              default_weight: event.target.value
                             })
                           }
                         />
@@ -1684,20 +1799,6 @@ export default function EdgesAdminPage() {
                           />
                           <span>Transitive</span>
                         </label>
-                      </div>
-                      <div>
-                        <input
-                          aria-label="Default weight"
-                          placeholder="Default weight"
-                          type="number"
-                          step="0.01"
-                          value={draft.default_weight}
-                          onChange={(event) =>
-                            updateEdgeRelationDraft(draft.draftId, {
-                              default_weight: event.target.value
-                            })
-                          }
-                        />
                       </div>
                       <div className="admin-row__actions admin-row__actions--form">
                         <div className="button-row">
@@ -1734,9 +1835,6 @@ export default function EdgesAdminPage() {
 
             {referenceView === 'priors' && (
               <>
-                <div className="admin-subsection-title">
-                  <strong>Node type priors</strong>
-                </div>
                 {editNodeTypePrior ? (
                   <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
                     <div>
@@ -1921,8 +2019,8 @@ export default function EdgesAdminPage() {
               {filteredEdges.length > 0 && (
                 <div className="row review-footer admin-row admin-row--header admin-row--data-edge">
                   <div>Parent</div>
-                  <div>Child</div>
                   <div>Relation</div>
+                  <div>Child</div>
                 </div>
               )}
               {filteredEdges.length === 0 && <small>No edges found.</small>}
@@ -1939,9 +2037,9 @@ export default function EdgesAdminPage() {
                       {parent ? `${parent.name} (${parent.type})` : edge.parent_id}
                     </div>
                     <div>
-                      {child ? `${child.name} (${child.type})` : edge.child_id}
+                      {edge.relation}
                     </div>
-                    <div>{edge.relation}</div>
+                    <div>{child ? `${child.name} (${child.type})` : edge.child_id}</div>
                   </div>
                 );
               })}
@@ -1955,11 +2053,12 @@ export default function EdgesAdminPage() {
               {referenceView === 'relations' && (
                 <div className="admin-group">
                   <div className="row review-footer admin-row admin-row--header admin-row--data-relation">
-                    <div>Relation</div>
                     <div>Parent types</div>
+                    <div>Relation</div>
                     <div>Child types</div>
-                    <div>Transitive</div>
                     <div>Default weight</div>
+                    <div>Transitive</div>
+                    <div></div>
                   </div>
                   {edgeRelations.length === 0 && <small>No relations found.</small>}
                   {edgeRelations.map((relation) => (
@@ -1968,17 +2067,18 @@ export default function EdgesAdminPage() {
                       key={relation.relation}
                       onClick={() => startEditEdgeRelation(relation)}
                     >
-                      <div>{relation.relation}</div>
                       <div className="admin-cell-wrap">
                         {listToString(relation.allowed_parent_types)}
                       </div>
+                      <div>{relation.relation}</div>
                       <div className="admin-cell-wrap">
                         {listToString(relation.allowed_child_types)}
                       </div>
-                      <div>{relation.is_transitive ? 'Yes' : 'No'}</div>
                       <div>
                         {relation.default_weight === null ? '-' : relation.default_weight}
                       </div>
+                      <div>{relation.is_transitive ? 'Yes' : 'No'}</div>
+                      <div></div>
                     </div>
                   ))}
                 </div>

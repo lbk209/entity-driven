@@ -9,6 +9,7 @@ function parseEdgeRelationPayload(body: unknown) {
     relation?: string;
     is_transitive?: number | boolean | string;
     default_weight?: number | string | null;
+    description?: string | null;
     allowed_parent_types?: string[] | string;
     allowed_child_types?: string[] | string;
   };
@@ -54,7 +55,15 @@ function parseEdgeRelationPayload(body: unknown) {
   };
   const allowedParentTypes = parseAllowedTypes(record.allowed_parent_types);
   const allowedChildTypes = parseAllowedTypes(record.allowed_child_types);
-  return { relation, isTransitive, defaultWeight, allowedParentTypes, allowedChildTypes };
+  const description = record.description?.trim() || null;
+  return {
+    relation,
+    isTransitive,
+    defaultWeight,
+    description,
+    allowedParentTypes,
+    allowedChildTypes
+  };
 }
 
 function parseEdgeRelationUpdatePayload(body: unknown) {
@@ -64,6 +73,7 @@ function parseEdgeRelationUpdatePayload(body: unknown) {
     original_relation?: string;
     is_transitive?: number | boolean | string;
     default_weight?: number | string | null;
+    description?: string | null;
     allowed_parent_types?: string[] | string;
     allowed_child_types?: string[] | string;
   };
@@ -78,7 +88,7 @@ export async function GET() {
   const relations = db
     .prepare(
       `
-      SELECT relation, is_transitive, default_weight, allowed_parent_types, allowed_child_types
+      SELECT relation, is_transitive, default_weight, description, allowed_parent_types, allowed_child_types
       FROM edge_relations
       ORDER BY relation ASC
     `
@@ -144,16 +154,18 @@ export async function POST(request: Request) {
         relation,
         is_transitive,
         default_weight,
+        description,
         allowed_parent_types,
         allowed_child_types
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?)
     `
     )
     .run(
       payload.relation,
       payload.isTransitive,
       payload.defaultWeight,
+      payload.description,
       JSON.stringify(payload.allowedParentTypes),
       JSON.stringify(payload.allowedChildTypes)
     );
@@ -193,16 +205,18 @@ export async function PUT(request: Request) {
             relation,
             is_transitive,
             default_weight,
+            description,
             allowed_parent_types,
             allowed_child_types
           )
-          VALUES (?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?)
         `
         )
         .run(
           payload.relation,
           payload.isTransitive,
           payload.defaultWeight,
+          payload.description,
           JSON.stringify(payload.allowedParentTypes),
           JSON.stringify(payload.allowedChildTypes)
         );
@@ -219,6 +233,7 @@ export async function PUT(request: Request) {
           UPDATE edge_relations
           SET is_transitive = ?,
               default_weight = ?,
+              description = ?,
               allowed_parent_types = ?,
               allowed_child_types = ?
           WHERE relation = ?
@@ -227,6 +242,7 @@ export async function PUT(request: Request) {
         .run(
           payload.isTransitive,
           payload.defaultWeight,
+          payload.description,
           JSON.stringify(payload.allowedParentTypes),
           JSON.stringify(payload.allowedChildTypes),
           payload.relation

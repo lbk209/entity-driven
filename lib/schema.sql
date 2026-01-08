@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS edge_relations (
   relation TEXT PRIMARY KEY,
   is_transitive INTEGER,
   default_weight REAL,
+  description TEXT,
   allowed_parent_types TEXT NOT NULL,
   allowed_child_types TEXT NOT NULL
 );

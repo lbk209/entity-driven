@@ -73,8 +73,8 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Admin nodes: search filter supports field selection; insert forms keep open after save; draft selects show gray placeholder text; edit cancel buttons are last in row; node type inputs use inline suggestions populated from existing types.
 - Admin aliases: search filter supports alias/node selection; insert forms keep open after save; draft node select uses a placeholder.
 - Admin edges: search filter supports parent/child/relation selection; insert forms keep open after save; draft parent/child/relation selects use placeholders.
-- Edge relations now include allowed parent/child node type lists stored as JSON strings; edge inserts/updates validate parent/child node types against these lists.
-- Admin Reference tab now uses radio buttons to switch between edge relations and node type priors views; relation list wraps parent/child types and vertically centers row text.
+- Edge relations include allowed parent/child node type lists stored as JSON strings and a `description` field; edge inserts/updates validate parent/child node types against these lists.
+- Admin Reference tab uses radio buttons to switch between edge relations and node type priors views; relation list wraps parent/child types and vertically centers row text; relation edit row supports multi-select type pickers and shows the relation description in a compact textarea below the form row.
 - Entity Reviews filter: search uses a custom suggestion dropdown with max-height styling; suggestions show on focus and filter as you type.
 
 ## Schema
@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS edge_relations (
   relation TEXT PRIMARY KEY,
   is_transitive INTEGER,
   default_weight REAL,
+  description TEXT,
   allowed_parent_types TEXT NOT NULL,
   allowed_child_types TEXT NOT NULL
 );
