@@ -251,23 +251,6 @@ export function getDb() {
       )
       .run(description, relation);
   }
-  if (hasNodes?.name && !hasForeignKey(db, 'nodes', 'type', 'node_type_prior', 'node_type')) {
-    db.exec('PRAGMA foreign_keys = OFF');
-    db.exec(`
-      ALTER TABLE nodes RENAME TO nodes_old;
-      CREATE TABLE nodes (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        UNIQUE(name, type),
-        FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
-      );
-      INSERT INTO nodes (id, name, type)
-      SELECT id, name, type FROM nodes_old;
-      DROP TABLE nodes_old;
-    `);
-    db.exec('PRAGMA foreign_keys = ON');
-  }
   if (
     hasEdges?.name &&
     !hasForeignKey(db, 'edges', 'relation', 'edge_relations', 'relation')

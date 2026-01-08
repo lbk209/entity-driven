@@ -37,6 +37,12 @@ export async function POST(request: Request) {
     const reviewResult = reviewStmt.run(userId, body.content, now, now);
     const reviewId = Number(reviewResult.lastInsertRowid);
 
+    const upsertNodeType = db.prepare(
+      `
+        INSERT OR IGNORE INTO node_type_prior (node_type, base_prior, updated_at)
+        VALUES (?, 0, datetime('now'))
+      `
+    );
     const insertEntity = db.prepare('INSERT INTO nodes (name, type) VALUES (?, ?)');
     const selectAlias = db.prepare('SELECT node_id FROM entity_aliases WHERE alias = ?');
     const insertAlias = db.prepare(
@@ -51,6 +57,7 @@ export async function POST(request: Request) {
       const alias = entity.name.trim();
       if (!alias) continue;
       const normalizedType = entity.type?.trim() || 'default';
+      upsertNodeType.run(normalizedType);
       const aliasRow = selectAlias.get(alias) as { node_id: number } | undefined;
       let nodeId = aliasRow?.node_id;
       if (!nodeId) {
@@ -70,8 +77,15 @@ export async function POST(request: Request) {
     return reviewId;
   });
 
-  const reviewId = tx();
-  return NextResponse.json({ id: reviewId });
+  try {
+    const reviewId = tx();
+    return NextResponse.json({ id: reviewId });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'failed to save review' },
+      { status: 400 }
+    );
+  }
 }
 
 export async function PUT(request: Request) {
@@ -117,6 +131,12 @@ export async function PUT(request: Request) {
       .run(body.content, new Date().toISOString(), reviewId);
     db.prepare('DELETE FROM review_entity WHERE review_id = ?').run(reviewId);
 
+    const upsertNodeType = db.prepare(
+      `
+        INSERT OR IGNORE INTO node_type_prior (node_type, base_prior, updated_at)
+        VALUES (?, 0, datetime('now'))
+      `
+    );
     const insertEntity = db.prepare('INSERT INTO nodes (name, type) VALUES (?, ?)');
     const selectAlias = db.prepare('SELECT node_id FROM entity_aliases WHERE alias = ?');
     const insertAlias = db.prepare(
@@ -131,6 +151,7 @@ export async function PUT(request: Request) {
       const alias = entity.name.trim();
       if (!alias) continue;
       const normalizedType = entity.type?.trim() || 'default';
+      upsertNodeType.run(normalizedType);
       const aliasRow = selectAlias.get(alias) as { node_id: number } | undefined;
       let nodeId = aliasRow?.node_id;
       if (!nodeId) {
@@ -148,8 +169,15 @@ export async function PUT(request: Request) {
     }
   });
 
-  tx();
-  return NextResponse.json({ id: reviewId });
+  try {
+    tx();
+    return NextResponse.json({ id: reviewId });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'failed to update review' },
+      { status: 400 }
+    );
+  }
 }
 
 export async function DELETE(request: Request) {

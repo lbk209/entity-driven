@@ -90,6 +90,10 @@ function parseTypeList(value: string) {
     .filter((item) => item);
 }
 
+function edgeKey(edge: Edge) {
+  return `${edge.parent_id}-${edge.child_id}-${edge.relation}`;
+}
+
 function TypeMultiSelect({
   ariaLabel,
   placeholder,
@@ -196,9 +200,9 @@ export default function EdgesAdminPage() {
   const [nodeSearch, setNodeSearch] = useState('');
   const [nodeSearchField, setNodeSearchField] = useState<'name' | 'type'>('name');
   const [edgeSearch, setEdgeSearch] = useState('');
-  const [edgeSearchField, setEdgeSearchField] = useState<'parent' | 'child' | 'relation'>(
-    'parent'
-  );
+  const [edgeSearchField, setEdgeSearchField] = useState<
+    'parent' | 'child' | 'relation' | 'related'
+  >('parent');
   const [aliasSearch, setAliasSearch] = useState('');
   const [aliasSearchField, setAliasSearchField] = useState<'alias' | 'node'>('alias');
   const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
@@ -245,19 +249,119 @@ export default function EdgesAdminPage() {
     });
   }, [nodes, nodeSearch, nodeSearchField]);
 
-  const filteredEdges = useMemo(() => {
+  const filteredEdgesResult = useMemo(() => {
     const term = edgeSearch.trim().toLowerCase();
-    if (!term) return edges;
-    return edges.filter((edge) => {
-      const parent = nodeMap.get(edge.parent_id);
-      const child = nodeMap.get(edge.child_id);
-      const parentName = parent?.name.toLowerCase() ?? '';
-      const childName = child?.name.toLowerCase() ?? '';
-      if (edgeSearchField === 'parent') return parentName.includes(term);
-      if (edgeSearchField === 'child') return childName.includes(term);
-      return edge.relation.toLowerCase().includes(term);
-    });
-  }, [edges, edgeSearch, edgeSearchField, nodeMap]);
+    if (edgeSearchField === 'related') {
+      if (!term) {
+        return {
+          edges,
+          indirectKeys: new Set<string>(),
+          edgeSourceNodeId: new Map<string, number>(),
+          searchLabel: edgeSearch.trim()
+        };
+      }
+      const matchedByName = nodes.filter((node) =>
+        node.name.toLowerCase().includes(term)
+      );
+      const seedIds = new Set(matchedByName.map((node) => node.id));
+      const parsedId = Number(term);
+      if (Number.isFinite(parsedId)) {
+        const matchById = nodes.find((node) => node.id === parsedId);
+        if (matchById) seedIds.add(matchById.id);
+      }
+      if (seedIds.size === 0) {
+        return {
+          edges: [],
+          indirectKeys: new Set<string>(),
+          edgeSourceNodeId: new Map<string, number>(),
+          searchLabel: edgeSearch.trim()
+        };
+      }
+
+      const transitiveRelations = new Set(
+        edgeRelations
+          .filter((relation) => relation.is_transitive)
+          .map((relation) => relation.relation)
+      );
+      const edgesByNode = new Map<number, Edge[]>();
+      for (const edge of edges) {
+        const parentEdges = edgesByNode.get(edge.parent_id) ?? [];
+        parentEdges.push(edge);
+        edgesByNode.set(edge.parent_id, parentEdges);
+        const childEdges = edgesByNode.get(edge.child_id) ?? [];
+        childEdges.push(edge);
+        edgesByNode.set(edge.child_id, childEdges);
+      }
+
+      const visited = new Set<number>(seedIds);
+      const queue = Array.from(seedIds);
+      const resultKeys = new Set<string>();
+      const indirectKeys = new Set<string>();
+      const edgeSourceNodeId = new Map<string, number>();
+
+      while (queue.length > 0) {
+        const nodeId = queue.shift();
+        if (nodeId === undefined) break;
+        const connectedEdges = edgesByNode.get(nodeId) ?? [];
+        for (const edge of connectedEdges) {
+          const key = edgeKey(edge);
+          resultKeys.add(key);
+          if (!edgeSourceNodeId.has(key)) {
+            edgeSourceNodeId.set(key, nodeId);
+          }
+          const isDirect =
+            seedIds.has(edge.parent_id) || seedIds.has(edge.child_id);
+          if (!isDirect) {
+            indirectKeys.add(key);
+          }
+          if (!transitiveRelations.has(edge.relation)) continue;
+          const nextNodeId =
+            edge.parent_id === nodeId ? edge.child_id : edge.parent_id;
+          if (!visited.has(nextNodeId)) {
+            visited.add(nextNodeId);
+            queue.push(nextNodeId);
+          }
+        }
+      }
+
+      return {
+        edges: edges.filter((edge) => resultKeys.has(edgeKey(edge))),
+        indirectKeys,
+        edgeSourceNodeId,
+        searchLabel:
+          seedIds.size === 1
+            ? (() => {
+                const seedId = Array.from(seedIds)[0];
+                const node = nodeMap.get(seedId);
+                return node ? `${node.name} (${node.type})` : String(seedId);
+              })()
+            : edgeSearch.trim()
+      };
+    }
+
+    if (!term) {
+      return {
+        edges,
+        indirectKeys: new Set<string>(),
+        edgeSourceNodeId: new Map<string, number>(),
+        searchLabel: edgeSearch.trim()
+      };
+    }
+    return {
+      edges: edges.filter((edge) => {
+        const parent = nodeMap.get(edge.parent_id);
+        const child = nodeMap.get(edge.child_id);
+        const parentName = parent?.name.toLowerCase() ?? '';
+        const childName = child?.name.toLowerCase() ?? '';
+        if (edgeSearchField === 'parent') return parentName.includes(term);
+        if (edgeSearchField === 'child') return childName.includes(term);
+        return edge.relation.toLowerCase().includes(term);
+      }),
+      indirectKeys: new Set<string>(),
+      edgeSourceNodeId: new Map<string, number>(),
+      searchLabel: edgeSearch.trim()
+    };
+  }, [edgeRelations, edges, edgeSearch, edgeSearchField, nodeMap, nodes]);
 
   const filteredAliases = useMemo(() => {
     const term = aliasSearch.trim().toLowerCase();
@@ -1568,13 +1672,14 @@ export default function EdgesAdminPage() {
                   value={edgeSearchField}
                   onChange={(event) =>
                     setEdgeSearchField(
-                      event.target.value as 'parent' | 'child' | 'relation'
+                      event.target.value as 'parent' | 'child' | 'relation' | 'related'
                     )
                   }
                 >
                   <option value="parent">Parent</option>
                   <option value="child">Child</option>
                   <option value="relation">Relation</option>
+                  <option value="related">Related</option>
                 </select>
                 <input
                   placeholder="Search edges"
@@ -2016,30 +2121,49 @@ export default function EdgesAdminPage() {
         {activeTab === 'edges' && (
           <>
             <div className="admin-scroll">
-              {filteredEdges.length > 0 && (
+              {filteredEdgesResult.edges.length > 0 && (
                 <div className="row review-footer admin-row admin-row--header admin-row--data-edge">
                   <div>Parent</div>
                   <div>Relation</div>
                   <div>Child</div>
                 </div>
               )}
-              {filteredEdges.length === 0 && <small>No edges found.</small>}
-              {filteredEdges.map((edge, index) => {
+              {filteredEdgesResult.edges.length === 0 && <small>No edges found.</small>}
+              {filteredEdgesResult.edges.map((edge, index) => {
                 const parent = nodeMap.get(edge.parent_id);
                 const child = nodeMap.get(edge.child_id);
+                const isIndirect =
+                  edgeSearchField === 'related' &&
+                  filteredEdgesResult.indirectKeys.has(edgeKey(edge));
+                let parentLabel = parent
+                  ? `${parent.name} (${parent.type})`
+                  : String(edge.parent_id);
+                let childLabel = child
+                  ? `${child.name} (${child.type})`
+                  : String(edge.child_id);
+                if (isIndirect) {
+                  const sourceNodeId = filteredEdgesResult.edgeSourceNodeId.get(
+                    edgeKey(edge)
+                  );
+                  const searchLabel =
+                    filteredEdgesResult.searchLabel || 'Search';
+                  if (sourceNodeId === edge.parent_id) {
+                    parentLabel = searchLabel;
+                  } else if (sourceNodeId === edge.child_id) {
+                    childLabel = searchLabel;
+                  }
+                }
                 return (
                   <div
-                    className="row review-footer admin-row admin-row--data admin-row--data-edge admin-row--clickable"
+                    className={`row review-footer admin-row admin-row--data admin-row--data-edge admin-row--clickable${isIndirect ? ' admin-row--deemphasized' : ''}`}
                     key={`${edge.parent_id}-${edge.child_id}-${edge.relation}-${index}`}
                     onClick={() => startEditEdge(edge)}
                   >
-                    <div>
-                      {parent ? `${parent.name} (${parent.type})` : edge.parent_id}
-                    </div>
+                    <div>{parentLabel}</div>
                     <div>
                       {edge.relation}
                     </div>
-                    <div>{child ? `${child.name} (${child.type})` : edge.child_id}</div>
+                    <div>{childLabel}</div>
                   </div>
                 );
               })}

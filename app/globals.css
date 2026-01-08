@@ -333,6 +333,10 @@ textarea {
   grid-template-columns: 100px minmax(220px, 1fr) minmax(180px, 1fr);
 }
 
+.admin-row--deemphasized {
+  color: #8a8a8a;
+}
+
 .admin-row--data-edge {
   grid-template-columns: minmax(220px, 1fr) 120px minmax(220px, 1fr);
 }
