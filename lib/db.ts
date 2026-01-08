@@ -20,11 +20,26 @@ CREATE TABLE IF NOT EXISTS review (
   FOREIGN KEY (user_id) REFERENCES user(id)
 );
 
+CREATE TABLE IF NOT EXISTS node_type_prior (
+  node_type TEXT PRIMARY KEY,
+  base_prior REAL,
+  updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
-  UNIQUE(name, type)
+  UNIQUE(name, type),
+  FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
+);
+
+CREATE TABLE IF NOT EXISTS edge_relations (
+  relation TEXT PRIMARY KEY,
+  is_transitive INTEGER,
+  default_weight REAL,
+  allowed_parent_types TEXT NOT NULL,
+  allowed_child_types TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS edges (
@@ -33,7 +48,8 @@ CREATE TABLE IF NOT EXISTS edges (
   relation TEXT NOT NULL,
   UNIQUE(parent_id, child_id, relation),
   FOREIGN KEY (parent_id) REFERENCES nodes(id),
-  FOREIGN KEY (child_id) REFERENCES nodes(id)
+  FOREIGN KEY (child_id) REFERENCES nodes(id),
+  FOREIGN KEY (relation) REFERENCES edge_relations(relation)
 );
 
 CREATE TABLE IF NOT EXISTS entity_aliases (
@@ -71,6 +87,21 @@ CREATE TABLE IF NOT EXISTS review_entity_sentiment (
 );
 `;
 
+function hasForeignKey(
+  dbInstance: Database.Database,
+  table: string,
+  column: string,
+  refTable: string,
+  refColumn: string
+) {
+  const rows = dbInstance
+    .prepare(`PRAGMA foreign_key_list('${table}')`)
+    .all() as Array<{ from: string; table: string; to: string }>;
+  return rows.some(
+    (row) => row.from === column && row.table === refTable && row.to === refColumn
+  );
+}
+
 export function getDb() {
   if (db) return db;
 
@@ -78,7 +109,43 @@ export function getDb() {
   fs.mkdirSync(dataDir, { recursive: true });
   const dbPath = path.join(dataDir, 'app.sqlite');
   db = new Database(dbPath);
+  db.pragma('foreign_keys = ON');
   db.exec(schemaSql);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS node_type_prior (
+      node_type TEXT PRIMARY KEY,
+      base_prior REAL,
+      updated_at TEXT
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS edge_relations (
+      relation TEXT PRIMARY KEY,
+      is_transitive INTEGER,
+      default_weight REAL,
+      allowed_parent_types TEXT NOT NULL,
+      allowed_child_types TEXT NOT NULL
+    );
+  `);
+  const edgeRelationColumns = db
+    .prepare("PRAGMA table_info('edge_relations')")
+    .all() as Array<{ name: string }>;
+  const hasAllowedParentTypes = edgeRelationColumns.some(
+    (column) => column.name === 'allowed_parent_types'
+  );
+  const hasAllowedChildTypes = edgeRelationColumns.some(
+    (column) => column.name === 'allowed_child_types'
+  );
+  if (!hasAllowedParentTypes) {
+    db.exec(
+      "ALTER TABLE edge_relations ADD COLUMN allowed_parent_types TEXT NOT NULL DEFAULT '[]';"
+    );
+  }
+  if (!hasAllowedChildTypes) {
+    db.exec(
+      "ALTER TABLE edge_relations ADD COLUMN allowed_child_types TEXT NOT NULL DEFAULT '[]';"
+    );
+  }
   const hasNodes = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'")
     .get() as { name?: string } | undefined;
@@ -88,7 +155,8 @@ export function getDb() {
         id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         type TEXT NOT NULL,
-        UNIQUE(name, type)
+        UNIQUE(name, type),
+        FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
       );
     `);
   }
@@ -103,9 +171,92 @@ export function getDb() {
         relation TEXT NOT NULL,
         UNIQUE(parent_id, child_id, relation),
         FOREIGN KEY (parent_id) REFERENCES nodes(id),
-        FOREIGN KEY (child_id) REFERENCES nodes(id)
+        FOREIGN KEY (child_id) REFERENCES nodes(id),
+        FOREIGN KEY (relation) REFERENCES edge_relations(relation)
       );
     `);
+  }
+  db.exec(`
+    INSERT OR IGNORE INTO node_type_prior (node_type, base_prior, updated_at)
+    SELECT DISTINCT type, 0, datetime('now') FROM nodes;
+  `);
+  const allowedTypes = db
+    .prepare(
+      `
+      SELECT DISTINCT type AS value FROM nodes
+      UNION
+      SELECT DISTINCT node_type AS value FROM node_type_prior
+    `
+    )
+    .all() as Array<{ value: string }>;
+  const allowedTypesJson = JSON.stringify(
+    allowedTypes
+      .map((row) => row.value?.trim())
+      .filter((value) => value)
+  );
+  db
+    .prepare(
+      `
+      INSERT OR IGNORE INTO edge_relations (
+        relation,
+        is_transitive,
+        default_weight,
+        allowed_parent_types,
+        allowed_child_types
+      )
+      SELECT DISTINCT relation, 0, 1, ?, ? FROM edges;
+    `
+    )
+    .run(allowedTypesJson, allowedTypesJson);
+  if (!hasAllowedParentTypes || !hasAllowedChildTypes) {
+    db
+      .prepare(
+        `
+        UPDATE edge_relations
+        SET allowed_parent_types = ?, allowed_child_types = ?
+        WHERE allowed_parent_types IN ('[]', '') OR allowed_child_types IN ('[]', '')
+      `
+      )
+      .run(allowedTypesJson, allowedTypesJson);
+  }
+  if (hasNodes?.name && !hasForeignKey(db, 'nodes', 'type', 'node_type_prior', 'node_type')) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`
+      ALTER TABLE nodes RENAME TO nodes_old;
+      CREATE TABLE nodes (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        UNIQUE(name, type),
+        FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
+      );
+      INSERT INTO nodes (id, name, type)
+      SELECT id, name, type FROM nodes_old;
+      DROP TABLE nodes_old;
+    `);
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+  if (
+    hasEdges?.name &&
+    !hasForeignKey(db, 'edges', 'relation', 'edge_relations', 'relation')
+  ) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`
+      ALTER TABLE edges RENAME TO edges_old;
+      CREATE TABLE edges (
+        parent_id INTEGER NOT NULL,
+        child_id INTEGER NOT NULL,
+        relation TEXT NOT NULL,
+        UNIQUE(parent_id, child_id, relation),
+        FOREIGN KEY (parent_id) REFERENCES nodes(id),
+        FOREIGN KEY (child_id) REFERENCES nodes(id),
+        FOREIGN KEY (relation) REFERENCES edge_relations(relation)
+      );
+      INSERT INTO edges (parent_id, child_id, relation)
+      SELECT parent_id, child_id, relation FROM edges_old;
+      DROP TABLE edges_old;
+    `);
+    db.exec('PRAGMA foreign_keys = ON');
   }
   const reviewEntityColumns = db
     .prepare("PRAGMA table_info('review_entity')")

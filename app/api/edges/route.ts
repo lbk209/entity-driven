@@ -3,7 +3,18 @@ import { getDb } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
-const allowedRelations = new Set(['contains', 'sells']);
+function parseAllowedTypes(value?: string) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item)).filter((item) => item);
+    }
+  } catch {
+    return [];
+  }
+  return [];
+}
 
 function parseEdgePayload(body: unknown) {
   if (!body || typeof body !== 'object') return null;
@@ -17,7 +28,7 @@ function parseEdgePayload(body: unknown) {
   const childId = Number(record.child_id);
   const relation = record.relation?.trim();
   if (!Number.isFinite(parentId) || !Number.isFinite(childId)) return null;
-  if (!relation || !allowedRelations.has(relation)) return null;
+  if (!relation) return null;
   return { parentId, childId, relation, force: Boolean(record.force) };
 }
 
@@ -39,8 +50,8 @@ function parseEdgeUpdatePayload(body: unknown) {
   const originalRelation = record.original_relation?.trim();
   if (!Number.isFinite(parentId) || !Number.isFinite(childId)) return null;
   if (!Number.isFinite(originalParentId) || !Number.isFinite(originalChildId)) return null;
-  if (!relation || !allowedRelations.has(relation)) return null;
-  if (!originalRelation || !allowedRelations.has(originalRelation)) return null;
+  if (!relation) return null;
+  if (!originalRelation) return null;
   return {
     parentId,
     childId,
@@ -79,6 +90,52 @@ export async function POST(request: Request) {
   }
 
   const db = getDb();
+  const nodeTypes = db
+    .prepare(
+      `
+      SELECT parent.type AS parent_type, child.type AS child_type
+      FROM nodes parent
+      JOIN nodes child ON child.id = ?
+      WHERE parent.id = ?
+    `
+    )
+    .get(payload.childId, payload.parentId) as
+    | { parent_type: string; child_type: string }
+    | undefined;
+  if (!nodeTypes) {
+    return NextResponse.json({ error: 'parent or child node not found' }, { status: 404 });
+  }
+  const relationRow = db
+    .prepare(
+      `
+      SELECT allowed_parent_types, allowed_child_types
+      FROM edge_relations
+      WHERE relation = ?
+    `
+    )
+    .get(payload.relation) as
+    | { allowed_parent_types?: string; allowed_child_types?: string }
+    | undefined;
+  if (!relationRow) {
+    return NextResponse.json(
+      { error: 'relation must exist in edge_relations' },
+      { status: 400 }
+    );
+  }
+  const allowedParentTypes = parseAllowedTypes(relationRow.allowed_parent_types);
+  const allowedChildTypes = parseAllowedTypes(relationRow.allowed_child_types);
+  if (!allowedParentTypes.includes(nodeTypes.parent_type)) {
+    return NextResponse.json(
+      { error: 'parent type not allowed for relation' },
+      { status: 400 }
+    );
+  }
+  if (!allowedChildTypes.includes(nodeTypes.child_type)) {
+    return NextResponse.json(
+      { error: 'child type not allowed for relation' },
+      { status: 400 }
+    );
+  }
   const result = db
     .prepare(
       'INSERT OR IGNORE INTO edges (parent_id, child_id, relation) VALUES (?, ?, ?)'
@@ -103,6 +160,52 @@ export async function PUT(request: Request) {
   }
 
   const db = getDb();
+  const nodeTypes = db
+    .prepare(
+      `
+      SELECT parent.type AS parent_type, child.type AS child_type
+      FROM nodes parent
+      JOIN nodes child ON child.id = ?
+      WHERE parent.id = ?
+    `
+    )
+    .get(payload.childId, payload.parentId) as
+    | { parent_type: string; child_type: string }
+    | undefined;
+  if (!nodeTypes) {
+    return NextResponse.json({ error: 'parent or child node not found' }, { status: 404 });
+  }
+  const relationRow = db
+    .prepare(
+      `
+      SELECT allowed_parent_types, allowed_child_types
+      FROM edge_relations
+      WHERE relation = ?
+    `
+    )
+    .get(payload.relation) as
+    | { allowed_parent_types?: string; allowed_child_types?: string }
+    | undefined;
+  if (!relationRow) {
+    return NextResponse.json(
+      { error: 'relation must exist in edge_relations' },
+      { status: 400 }
+    );
+  }
+  const allowedParentTypes = parseAllowedTypes(relationRow.allowed_parent_types);
+  const allowedChildTypes = parseAllowedTypes(relationRow.allowed_child_types);
+  if (!allowedParentTypes.includes(nodeTypes.parent_type)) {
+    return NextResponse.json(
+      { error: 'parent type not allowed for relation' },
+      { status: 400 }
+    );
+  }
+  if (!allowedChildTypes.includes(nodeTypes.child_type)) {
+    return NextResponse.json(
+      { error: 'child type not allowed for relation' },
+      { status: 400 }
+    );
+  }
   try {
     db
       .prepare(

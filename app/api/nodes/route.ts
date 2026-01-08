@@ -74,6 +74,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'node already exists' }, { status: 409 });
     }
     const tx = db.transaction(() => {
+      db
+        .prepare(
+          `
+          INSERT OR IGNORE INTO node_type_prior (node_type, base_prior, updated_at)
+          VALUES (?, 0, datetime('now'))
+        `
+        )
+        .run(payload.type);
       const result = db
         .prepare('INSERT INTO nodes (name, type) VALUES (?, ?)')
         .run(payload.name, payload.type);
@@ -109,6 +117,14 @@ export async function PUT(request: Request) {
 
   const db = getDb();
   const tx = db.transaction(() => {
+    db
+      .prepare(
+        `
+        INSERT OR IGNORE INTO node_type_prior (node_type, base_prior, updated_at)
+        VALUES (?, 0, datetime('now'))
+      `
+      )
+      .run(payload.type);
     db
       .prepare('UPDATE nodes SET id = ?, name = ?, type = ? WHERE id = ?')
       .run(payload.id, payload.name, payload.type, payload.originalId);

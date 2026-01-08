@@ -73,6 +73,8 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Admin nodes: search filter supports field selection; insert forms keep open after save; draft selects show gray placeholder text; edit cancel buttons are last in row; node type inputs use inline suggestions populated from existing types.
 - Admin aliases: search filter supports alias/node selection; insert forms keep open after save; draft node select uses a placeholder.
 - Admin edges: search filter supports parent/child/relation selection; insert forms keep open after save; draft parent/child/relation selects use placeholders.
+- Edge relations now include allowed parent/child node type lists stored as JSON strings; edge inserts/updates validate parent/child node types against these lists.
+- Admin Reference tab now uses radio buttons to switch between edge relations and node type priors views; relation list wraps parent/child types and vertically centers row text.
 - Entity Reviews filter: search uses a custom suggestion dropdown with max-height styling; suggestions show on focus and filter as you type.
 
 ## Schema
@@ -93,11 +95,26 @@ CREATE TABLE IF NOT EXISTS review (
   FOREIGN KEY (user_id) REFERENCES user(id)
 );
 
+CREATE TABLE IF NOT EXISTS node_type_prior (
+  node_type TEXT PRIMARY KEY,
+  base_prior REAL,
+  updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS edge_relations (
+  relation TEXT PRIMARY KEY,
+  is_transitive INTEGER,
+  default_weight REAL,
+  allowed_parent_types TEXT NOT NULL,
+  allowed_child_types TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
-  UNIQUE(name, type)
+  UNIQUE(name, type),
+  FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
 );
 
 CREATE TABLE IF NOT EXISTS entity_aliases (
@@ -119,7 +136,8 @@ CREATE TABLE IF NOT EXISTS edges (
   relation TEXT NOT NULL,
   UNIQUE(parent_id, child_id, relation),
   FOREIGN KEY(parent_id) REFERENCES nodes(id),
-  FOREIGN KEY(child_id) REFERENCES nodes(id)
+  FOREIGN KEY(child_id) REFERENCES nodes(id),
+  FOREIGN KEY(relation) REFERENCES edge_relations(relation)
 );
 
 CREATE TABLE IF NOT EXISTS review_entity (

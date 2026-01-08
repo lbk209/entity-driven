@@ -13,11 +13,26 @@ CREATE TABLE IF NOT EXISTS review (
   FOREIGN KEY (user_id) REFERENCES user(id)
 );
 
+CREATE TABLE IF NOT EXISTS node_type_prior (
+  node_type TEXT PRIMARY KEY,
+  base_prior REAL,
+  updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS edge_relations (
+  relation TEXT PRIMARY KEY,
+  is_transitive INTEGER,
+  default_weight REAL,
+  allowed_parent_types TEXT NOT NULL,
+  allowed_child_types TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
-  UNIQUE(name, type)
+  UNIQUE(name, type),
+  FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
 );
 
 CREATE TABLE IF NOT EXISTS edges (
@@ -26,7 +41,8 @@ CREATE TABLE IF NOT EXISTS edges (
   relation TEXT NOT NULL,
   UNIQUE(parent_id, child_id, relation),
   FOREIGN KEY (parent_id) REFERENCES nodes(id),
-  FOREIGN KEY (child_id) REFERENCES nodes(id)
+  FOREIGN KEY (child_id) REFERENCES nodes(id),
+  FOREIGN KEY (relation) REFERENCES edge_relations(relation)
 );
 
 CREATE TABLE IF NOT EXISTS entity_aliases (

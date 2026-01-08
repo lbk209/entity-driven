@@ -13,9 +13,23 @@ type NodeOption = {
 type Edge = {
   parent_id: number;
   child_id: number;
-  relation: 'contains' | 'sells';
+  relation: string;
   parent_review_count?: number;
   child_review_count?: number;
+};
+
+type EdgeRelation = {
+  relation: string;
+  is_transitive: number | null;
+  default_weight: number | null;
+  allowed_parent_types: string[];
+  allowed_child_types: string[];
+};
+
+type NodeTypePrior = {
+  node_type: string;
+  base_prior: number | null;
+  updated_at: string | null;
 };
 
 type AliasRow = {
@@ -29,32 +43,65 @@ type DraftEdge = {
   draftId: string;
   parent_id: number | null;
   child_id: number | null;
-  relation: Edge['relation'] | '';
+  relation: string;
 };
 type DraftNode = { draftId: string; name: string; type: string };
 type DraftAlias = { draftId: string; alias: string; node_id: number | null };
+type DraftEdgeRelation = {
+  draftId: string;
+  relation: string;
+  is_transitive: boolean;
+  default_weight: string;
+  allowed_parent_types: string;
+  allowed_child_types: string;
+};
+type DraftNodeTypePrior = {
+  draftId: string;
+  node_type: string;
+  base_prior: string;
+};
 type EditNode = NodeOption & { original_id: number };
 type EditEdge = Edge & {
   original_parent_id: number;
   original_child_id: number;
-  original_relation: Edge['relation'];
+  original_relation: string;
 };
 type EditAlias = AliasRow & { original_alias: string };
-
-const relations: Array<Edge['relation']> = ['contains', 'sells'];
+type EditEdgeRelation = {
+  relation: string;
+  original_relation: string;
+  is_transitive: number | null;
+  default_weight: number | null;
+  allowed_parent_types: string;
+  allowed_child_types: string;
+};
+type EditNodeTypePrior = NodeTypePrior & { original_node_type: string };
 
 export default function EdgesAdminPage() {
   const [nodes, setNodes] = useState<NodeOption[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [aliases, setAliases] = useState<AliasRow[]>([]);
+  const [edgeRelations, setEdgeRelations] = useState<EdgeRelation[]>([]);
+  const [nodeTypePriors, setNodeTypePriors] = useState<NodeTypePrior[]>([]);
   const [drafts, setDrafts] = useState<DraftEdge[]>([]);
   const [nodeDrafts, setNodeDrafts] = useState<DraftNode[]>([]);
   const [aliasDrafts, setAliasDrafts] = useState<DraftAlias[]>([]);
+  const [edgeRelationDrafts, setEdgeRelationDrafts] = useState<DraftEdgeRelation[]>([]);
+  const [nodeTypeDrafts, setNodeTypeDrafts] = useState<DraftNodeTypePrior[]>([]);
   const [editNode, setEditNode] = useState<EditNode | null>(null);
   const [editEdge, setEditEdge] = useState<EditEdge | null>(null);
   const [editAlias, setEditAlias] = useState<EditAlias | null>(null);
+  const [editEdgeRelation, setEditEdgeRelation] = useState<EditEdgeRelation | null>(null);
+  const [editNodeTypePrior, setEditNodeTypePrior] = useState<EditNodeTypePrior | null>(
+    null
+  );
   const [status, setStatus] = useState('');
-  const [activeTab, setActiveTab] = useState<'nodes' | 'edges' | 'aliases'>('nodes');
+  const [activeTab, setActiveTab] = useState<
+    'nodes' | 'edges' | 'aliases' | 'reference'
+  >('nodes');
+  const [referenceView, setReferenceView] = useState<'relations' | 'priors'>(
+    'relations'
+  );
   const [nodeSearch, setNodeSearch] = useState('');
   const [nodeSearchField, setNodeSearchField] = useState<'name' | 'type'>('name');
   const [edgeSearch, setEdgeSearch] = useState('');
@@ -83,8 +130,29 @@ export default function EdgesAdminPage() {
       const value = node.type.trim();
       if (value) seen.add(value);
     }
+    for (const nodeType of nodeTypePriors) {
+      const value = nodeType.node_type.trim();
+      if (value) seen.add(value);
+    }
     return Array.from(seen).sort((a, b) => a.localeCompare(b));
-  }, [nodes]);
+  }, [nodes, nodeTypePriors]);
+
+  const relationOptions = useMemo(() => {
+    return edgeRelations
+      .map((relation) => relation.relation)
+      .sort((a, b) => a.localeCompare(b));
+  }, [edgeRelations]);
+
+  function listToString(list: string[]) {
+    return list.join(', ');
+  }
+
+  function parseTypeList(value: string) {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item);
+  }
 
   const filteredNodes = useMemo(() => {
     const term = nodeSearch.trim().toLowerCase();
@@ -152,6 +220,26 @@ export default function EdgesAdminPage() {
     loadAliases().catch(() => setAliases([]));
   }, []);
 
+  async function loadEdgeRelations() {
+    const res = await fetch('/api/edge-relations');
+    const data = await res.json().catch(() => ({}));
+    setEdgeRelations(data.relations || []);
+  }
+
+  useEffect(() => {
+    loadEdgeRelations().catch(() => setEdgeRelations([]));
+  }, []);
+
+  async function loadNodeTypePriors() {
+    const res = await fetch('/api/node-type-prior');
+    const data = await res.json().catch(() => ({}));
+    setNodeTypePriors(data.node_types || []);
+  }
+
+  useEffect(() => {
+    loadNodeTypePriors().catch(() => setNodeTypePriors([]));
+  }, []);
+
   useEffect(() => {
     const stickyNode = stickyRef.current;
     if (!stickyNode) return;
@@ -196,10 +284,39 @@ export default function EdgesAdminPage() {
     setStatus('');
   }
 
+  function addEdgeRelationDraft() {
+    if (edgeRelationDrafts.length > 0 || editEdgeRelation) return;
+    const draft: DraftEdgeRelation = {
+      draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      relation: '',
+      is_transitive: false,
+      default_weight: '',
+      allowed_parent_types: '',
+      allowed_child_types: ''
+    };
+    setEdgeRelationDrafts((prev) => [...prev, draft]);
+    setStatus('');
+  }
+
+  function addNodeTypeDraft() {
+    if (nodeTypeDrafts.length > 0 || editNodeTypePrior) return;
+    const draft: DraftNodeTypePrior = {
+      draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      node_type: '',
+      base_prior: ''
+    };
+    setNodeTypeDrafts((prev) => [...prev, draft]);
+    setStatus('');
+  }
+
   function addDraftRow() {
     if (drafts.length > 0 || editEdge) return;
     if (nodes.length === 0) {
       setStatus('Add nodes first so edges can reference them.');
+      return;
+    }
+    if (edgeRelations.length === 0) {
+      setStatus('Add edge relations first so edges can reference them.');
       return;
     }
     const draft: DraftEdge = {
@@ -236,6 +353,25 @@ export default function EdgesAdminPage() {
     );
   }
 
+  function updateEdgeRelationDraft(
+    draftId: string,
+    next: Partial<DraftEdgeRelation>
+  ) {
+    setEdgeRelationDrafts((prev) =>
+      prev.map((draft) =>
+        draft.draftId === draftId ? { ...draft, ...next } : draft
+      )
+    );
+  }
+
+  function updateNodeTypeDraft(draftId: string, next: Partial<DraftNodeTypePrior>) {
+    setNodeTypeDrafts((prev) =>
+      prev.map((draft) =>
+        draft.draftId === draftId ? { ...draft, ...next } : draft
+      )
+    );
+  }
+
   function updateEditNode(next: Partial<NodeOption>) {
     setEditNode((prev) => (prev ? { ...prev, ...next } : prev));
   }
@@ -246,6 +382,14 @@ export default function EdgesAdminPage() {
 
   function updateEditAlias(next: Partial<AliasRow>) {
     setEditAlias((prev) => (prev ? { ...prev, ...next } : prev));
+  }
+
+  function updateEditEdgeRelation(next: Partial<EditEdgeRelation>) {
+    setEditEdgeRelation((prev) => (prev ? { ...prev, ...next } : prev));
+  }
+
+  function updateEditNodeTypePrior(next: Partial<NodeTypePrior>) {
+    setEditNodeTypePrior((prev) => (prev ? { ...prev, ...next } : prev));
   }
 
   async function saveNodeDraft(draft: DraftNode) {
@@ -270,6 +414,7 @@ export default function EdgesAdminPage() {
       )
     );
     await loadNodes();
+    await loadNodeTypePriors();
     await loadAliases();
   }
 
@@ -307,6 +452,94 @@ export default function EdgesAdminPage() {
     await loadAliases();
   }
 
+  async function saveEdgeRelationDraft(draft: DraftEdgeRelation) {
+    setStatus('');
+    if (!draft.relation.trim()) {
+      setStatus('Relation is required.');
+      return;
+    }
+    const allowedParentTypes = parseTypeList(draft.allowed_parent_types);
+    const allowedChildTypes = parseTypeList(draft.allowed_child_types);
+    if (allowedParentTypes.length === 0 || allowedChildTypes.length === 0) {
+      setStatus('Provide allowed parent and child types.');
+      return;
+    }
+    const weightValue = draft.default_weight.trim()
+      ? Number(draft.default_weight)
+      : null;
+    if (weightValue !== null && !Number.isFinite(weightValue)) {
+      setStatus('Default weight must be a number.');
+      return;
+    }
+    const res = await fetch('/api/edge-relations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        relation: draft.relation,
+        is_transitive: draft.is_transitive ? 1 : 0,
+        default_weight: weightValue,
+        allowed_parent_types: allowedParentTypes,
+        allowed_child_types: allowedChildTypes
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to insert relation.');
+      return;
+    }
+    setEdgeRelationDrafts((prev) =>
+      prev.map((item) =>
+        item.draftId === draft.draftId
+          ? {
+              ...item,
+              relation: '',
+              is_transitive: false,
+              default_weight: '',
+              allowed_parent_types: '',
+              allowed_child_types: ''
+            }
+          : item
+      )
+    );
+    await loadEdgeRelations();
+  }
+
+  async function saveNodeTypeDraft(draft: DraftNodeTypePrior) {
+    setStatus('');
+    if (!draft.node_type.trim()) {
+      setStatus('Node type is required.');
+      return;
+    }
+    const basePriorValue = draft.base_prior.trim()
+      ? Number(draft.base_prior)
+      : null;
+    if (basePriorValue !== null && !Number.isFinite(basePriorValue)) {
+      setStatus('Base prior must be a number.');
+      return;
+    }
+    const res = await fetch('/api/node-type-prior', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        node_type: draft.node_type,
+        base_prior: basePriorValue
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to insert node type.');
+      return;
+    }
+    setNodeTypeDrafts((prev) =>
+      prev.map((item) =>
+        item.draftId === draft.draftId
+          ? { ...item, node_type: '', base_prior: '' }
+          : item
+      )
+    );
+    await loadNodeTypePriors();
+  }
+
   async function saveEditNode(node: EditNode) {
     setStatus('');
     const res = await fetch('/api/nodes', {
@@ -326,6 +559,7 @@ export default function EdgesAdminPage() {
     }
     setEditNode(null);
     await loadNodes();
+    await loadNodeTypePriors();
     await loadEdges();
     await loadAliases();
   }
@@ -347,6 +581,73 @@ export default function EdgesAdminPage() {
       return;
     }
     setEditAlias(null);
+    await loadAliases();
+  }
+
+  async function saveEditEdgeRelation(relation: EditEdgeRelation) {
+    setStatus('');
+    const allowedParentTypes = parseTypeList(relation.allowed_parent_types);
+    const allowedChildTypes = parseTypeList(relation.allowed_child_types);
+    if (allowedParentTypes.length === 0 || allowedChildTypes.length === 0) {
+      setStatus('Provide allowed parent and child types.');
+      return;
+    }
+    const weightValue =
+      relation.default_weight === null
+        ? null
+        : Number(relation.default_weight);
+    if (weightValue !== null && !Number.isFinite(weightValue)) {
+      setStatus('Default weight must be a number.');
+      return;
+    }
+    const res = await fetch('/api/edge-relations', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        relation: relation.relation,
+        is_transitive: relation.is_transitive ? 1 : 0,
+        default_weight: weightValue,
+        allowed_parent_types: allowedParentTypes,
+        allowed_child_types: allowedChildTypes,
+        original_relation: relation.original_relation
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to update relation.');
+      return;
+    }
+    setEditEdgeRelation(null);
+    await loadEdgeRelations();
+    await loadEdges();
+  }
+
+  async function saveEditNodeTypePrior(nodeType: EditNodeTypePrior) {
+    setStatus('');
+    const basePriorValue =
+      nodeType.base_prior === null ? null : Number(nodeType.base_prior);
+    if (basePriorValue !== null && !Number.isFinite(basePriorValue)) {
+      setStatus('Base prior must be a number.');
+      return;
+    }
+    const res = await fetch('/api/node-type-prior', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        node_type: nodeType.node_type,
+        base_prior: basePriorValue,
+        original_node_type: nodeType.original_node_type
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to update node type.');
+      return;
+    }
+    setEditNodeTypePrior(null);
+    await loadNodeTypePriors();
+    await loadNodes();
+    await loadEdges();
     await loadAliases();
   }
 
@@ -418,6 +719,14 @@ export default function EdgesAdminPage() {
     setAliasDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
   }
 
+  function removeEdgeRelationDraft(draftId: string) {
+    setEdgeRelationDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
+  }
+
+  function removeNodeTypeDraft(draftId: string) {
+    setNodeTypeDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
+  }
+
   function startEditNode(node: NodeOption) {
     if (nodeDrafts.length > 0) return;
     setMergeTargetId(null);
@@ -475,6 +784,34 @@ export default function EdgesAdminPage() {
     setEditAlias(null);
   }
 
+  function startEditEdgeRelation(relation: EdgeRelation) {
+    if (edgeRelationDrafts.length > 0) return;
+    setEditEdgeRelation({
+      relation: relation.relation,
+      original_relation: relation.relation,
+      is_transitive: relation.is_transitive,
+      default_weight: relation.default_weight,
+      allowed_parent_types: listToString(relation.allowed_parent_types),
+      allowed_child_types: listToString(relation.allowed_child_types)
+    });
+  }
+
+  function cancelEditEdgeRelation() {
+    setEditEdgeRelation(null);
+  }
+
+  function startEditNodeTypePrior(nodeType: NodeTypePrior) {
+    if (nodeTypeDrafts.length > 0) return;
+    setEditNodeTypePrior({
+      ...nodeType,
+      original_node_type: nodeType.node_type
+    });
+  }
+
+  function cancelEditNodeTypePrior() {
+    setEditNodeTypePrior(null);
+  }
+
   async function deleteAlias(alias: AliasRow) {
     setStatus('');
     if (!window.confirm('Delete this alias?')) return;
@@ -489,6 +826,44 @@ export default function EdgesAdminPage() {
       return;
     }
     setEditAlias(null);
+    await loadAliases();
+  }
+
+  async function deleteEdgeRelation(relation: EdgeRelation) {
+    setStatus('');
+    if (!window.confirm('Delete this relation?')) return;
+    const res = await fetch('/api/edge-relations', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ relation: relation.relation })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to delete relation.');
+      return;
+    }
+    setEditEdgeRelation(null);
+    await loadEdgeRelations();
+    await loadEdges();
+  }
+
+  async function deleteNodeTypePrior(nodeType: NodeTypePrior) {
+    setStatus('');
+    if (!window.confirm('Delete this node type?')) return;
+    const res = await fetch('/api/node-type-prior', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node_type: nodeType.node_type })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to delete node type.');
+      return;
+    }
+    setEditNodeTypePrior(null);
+    await loadNodeTypePriors();
+    await loadNodes();
+    await loadEdges();
     await loadAliases();
   }
 
@@ -594,6 +969,15 @@ export default function EdgesAdminPage() {
             onClick={() => setActiveTab('edges')}
           >
             <strong>Edges</strong>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'reference'}
+            className={`admin-tab ${activeTab === 'reference' ? 'admin-tab--active' : ''}`}
+            onClick={() => setActiveTab('reference')}
+          >
+            <strong>Reference</strong>
           </button>
         </div>
 
@@ -986,11 +1370,11 @@ export default function EdgesAdminPage() {
                     value={editEdge.relation}
                     onChange={(event) =>
                       updateEditEdge({
-                        relation: event.target.value as Edge['relation']
+                        relation: event.target.value
                       })
                     }
                   >
-                    {relations.map((relation) => (
+                    {relationOptions.map((relation) => (
                       <option key={relation} value={relation}>
                         {relation}
                       </option>
@@ -1066,12 +1450,12 @@ export default function EdgesAdminPage() {
                     value={draft.relation}
                     onChange={(event) =>
                       updateDraft(draft.draftId, {
-                        relation: event.target.value as Edge['relation'] | ''
+                        relation: event.target.value
                       })
                     }
                   >
                       <option value="">Select relation</option>
-                      {relations.map((relation) => (
+                      {relationOptions.map((relation) => (
                         <option key={relation} value={relation}>
                           {relation}
                         </option>
@@ -1123,6 +1507,348 @@ export default function EdgesAdminPage() {
                   Insert edge
                 </button>
               </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'reference' && (
+          <>
+            <div className="admin-toolbar admin-toolbar--reference">
+              <label className="admin-radio-label">
+                <input
+                  type="radio"
+                  name="reference-view"
+                  checked={referenceView === 'relations'}
+                  onChange={() => setReferenceView('relations')}
+                />
+                <span>Relation</span>
+              </label>
+              <label className="admin-radio-label">
+                <input
+                  type="radio"
+                  name="reference-view"
+                  checked={referenceView === 'priors'}
+                  onChange={() => setReferenceView('priors')}
+                />
+                <span>Prior</span>
+              </label>
+            </div>
+
+            {referenceView === 'relations' && (
+              <>
+                <div className="admin-subsection-title">
+                  <strong>Edge relations</strong>
+                </div>
+                {editEdgeRelation ? (
+                  <div className="row review-footer admin-row admin-row--form admin-row--form-relation admin-form">
+                    <div>
+                      <input
+                        aria-label="Relation"
+                        placeholder="Relation"
+                        value={editEdgeRelation.relation}
+                        onChange={(event) =>
+                          updateEditEdgeRelation({ relation: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <input
+                        aria-label="Allowed parent types"
+                        placeholder="Allowed parent types"
+                        value={editEdgeRelation.allowed_parent_types}
+                        onChange={(event) =>
+                          updateEditEdgeRelation({
+                            allowed_parent_types: event.target.value
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <input
+                        aria-label="Allowed child types"
+                        placeholder="Allowed child types"
+                        value={editEdgeRelation.allowed_child_types}
+                        onChange={(event) =>
+                          updateEditEdgeRelation({
+                            allowed_child_types: event.target.value
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="admin-checkbox">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editEdgeRelation.is_transitive)}
+                          onChange={(event) =>
+                            updateEditEdgeRelation({
+                              is_transitive: event.target.checked ? 1 : 0
+                            })
+                          }
+                        />
+                        <span>Transitive</span>
+                      </label>
+                    </div>
+                    <div>
+                      <input
+                        aria-label="Default weight"
+                        placeholder="Default weight"
+                        type="number"
+                        step="0.01"
+                        value={editEdgeRelation.default_weight ?? ''}
+                        onChange={(event) =>
+                          updateEditEdgeRelation({
+                            default_weight: event.target.value
+                              ? Number(event.target.value)
+                              : null
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="admin-row__actions admin-row__actions--form">
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          onClick={() => saveEditEdgeRelation(editEdgeRelation)}
+                        >
+                          Update
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteEdgeRelation(editEdgeRelation)}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          className="button-link button-link--ghost"
+                          onClick={cancelEditEdgeRelation}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : edgeRelationDrafts.length > 0 ? (
+                  edgeRelationDrafts.map((draft) => (
+                    <div
+                      className="row review-footer admin-row admin-row--form admin-row--form-relation admin-form"
+                      key={draft.draftId}
+                    >
+                      <div>
+                        <input
+                          aria-label="Relation"
+                          placeholder="Relation"
+                          value={draft.relation}
+                          onChange={(event) =>
+                            updateEdgeRelationDraft(draft.draftId, {
+                              relation: event.target.value
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <input
+                          aria-label="Allowed parent types"
+                          placeholder="Allowed parent types"
+                          value={draft.allowed_parent_types}
+                          onChange={(event) =>
+                            updateEdgeRelationDraft(draft.draftId, {
+                              allowed_parent_types: event.target.value
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <input
+                          aria-label="Allowed child types"
+                          placeholder="Allowed child types"
+                          value={draft.allowed_child_types}
+                          onChange={(event) =>
+                            updateEdgeRelationDraft(draft.draftId, {
+                              allowed_child_types: event.target.value
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="admin-checkbox">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={draft.is_transitive}
+                            onChange={(event) =>
+                              updateEdgeRelationDraft(draft.draftId, {
+                                is_transitive: event.target.checked
+                              })
+                            }
+                          />
+                          <span>Transitive</span>
+                        </label>
+                      </div>
+                      <div>
+                        <input
+                          aria-label="Default weight"
+                          placeholder="Default weight"
+                          type="number"
+                          step="0.01"
+                          value={draft.default_weight}
+                          onChange={(event) =>
+                            updateEdgeRelationDraft(draft.draftId, {
+                              default_weight: event.target.value
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="admin-row__actions admin-row__actions--form">
+                        <div className="button-row">
+                          <button
+                            type="button"
+                            onClick={() => saveEdgeRelationDraft(draft)}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="button-link button-link--ghost"
+                            onClick={() => removeEdgeRelationDraft(draft.draftId)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="admin-toolbar">
+                    <button
+                      type="button"
+                      onClick={addEdgeRelationDraft}
+                      disabled={edgeRelationDrafts.length > 0 || !!editEdgeRelation}
+                    >
+                      Insert relation
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {referenceView === 'priors' && (
+              <>
+                <div className="admin-subsection-title">
+                  <strong>Node type priors</strong>
+                </div>
+                {editNodeTypePrior ? (
+                  <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
+                    <div>
+                      <input
+                        aria-label="Node type"
+                        placeholder="Node type"
+                        value={editNodeTypePrior.node_type}
+                        onChange={(event) =>
+                          updateEditNodeTypePrior({ node_type: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <input
+                        aria-label="Base prior"
+                        placeholder="Base prior"
+                        type="number"
+                        step="0.01"
+                        value={editNodeTypePrior.base_prior ?? ''}
+                        onChange={(event) =>
+                          updateEditNodeTypePrior({
+                            base_prior: event.target.value
+                              ? Number(event.target.value)
+                              : null
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="admin-row__actions admin-row__actions--form">
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          onClick={() => saveEditNodeTypePrior(editNodeTypePrior)}
+                        >
+                          Update
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteNodeTypePrior(editNodeTypePrior)}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          className="button-link button-link--ghost"
+                          onClick={cancelEditNodeTypePrior}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : nodeTypeDrafts.length > 0 ? (
+                  nodeTypeDrafts.map((draft) => (
+                    <div
+                      className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form"
+                      key={draft.draftId}
+                    >
+                      <div>
+                        <input
+                          aria-label="Node type"
+                          placeholder="Node type"
+                          value={draft.node_type}
+                          onChange={(event) =>
+                            updateNodeTypeDraft(draft.draftId, {
+                              node_type: event.target.value
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <input
+                          aria-label="Base prior"
+                          placeholder="Base prior"
+                          type="number"
+                          step="0.01"
+                          value={draft.base_prior}
+                          onChange={(event) =>
+                            updateNodeTypeDraft(draft.draftId, {
+                              base_prior: event.target.value
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="admin-row__actions admin-row__actions--form">
+                        <div className="button-row">
+                          <button type="button" onClick={() => saveNodeTypeDraft(draft)}>
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="button-link button-link--ghost"
+                            onClick={() => removeNodeTypeDraft(draft.draftId)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="admin-toolbar">
+                    <button
+                      type="button"
+                      onClick={addNodeTypeDraft}
+                      disabled={nodeTypeDrafts.length > 0 || !!editNodeTypePrior}
+                    >
+                      Insert node type
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -1219,6 +1945,66 @@ export default function EdgesAdminPage() {
                   </div>
                 );
               })}
+            </div>
+          </>
+        )}
+
+        {activeTab === 'reference' && (
+          <>
+            <div className="admin-scroll">
+              {referenceView === 'relations' && (
+                <div className="admin-group">
+                  <div className="row review-footer admin-row admin-row--header admin-row--data-relation">
+                    <div>Relation</div>
+                    <div>Parent types</div>
+                    <div>Child types</div>
+                    <div>Transitive</div>
+                    <div>Default weight</div>
+                  </div>
+                  {edgeRelations.length === 0 && <small>No relations found.</small>}
+                  {edgeRelations.map((relation) => (
+                    <div
+                      className="row review-footer admin-row admin-row--data admin-row--data-relation admin-row--clickable"
+                      key={relation.relation}
+                      onClick={() => startEditEdgeRelation(relation)}
+                    >
+                      <div>{relation.relation}</div>
+                      <div className="admin-cell-wrap">
+                        {listToString(relation.allowed_parent_types)}
+                      </div>
+                      <div className="admin-cell-wrap">
+                        {listToString(relation.allowed_child_types)}
+                      </div>
+                      <div>{relation.is_transitive ? 'Yes' : 'No'}</div>
+                      <div>
+                        {relation.default_weight === null ? '-' : relation.default_weight}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {referenceView === 'priors' && (
+                <div className="admin-group">
+                  <div className="row review-footer admin-row admin-row--header admin-row--data-node-type">
+                    <div>Node type</div>
+                    <div>Base prior</div>
+                    <div>Updated</div>
+                  </div>
+                  {nodeTypePriors.length === 0 && <small>No node types found.</small>}
+                  {nodeTypePriors.map((nodeType) => (
+                    <div
+                      className="row review-footer admin-row admin-row--data admin-row--data-node-type admin-row--clickable"
+                      key={nodeType.node_type}
+                      onClick={() => startEditNodeTypePrior(nodeType)}
+                    >
+                      <div>{nodeType.node_type}</div>
+                      <div>{nodeType.base_prior ?? '-'}</div>
+                      <div>{nodeType.updated_at ?? '-'}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}

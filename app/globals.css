@@ -127,6 +127,22 @@ h1 {
   flex-wrap: nowrap;
 }
 
+.admin-toolbar--reference {
+  justify-content: flex-start;
+}
+
+.admin-radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.admin-radio-label input {
+  width: auto;
+  margin: 0;
+}
+
 .admin-toolbar input {
   flex: 1;
 }
@@ -207,6 +223,7 @@ textarea {
 
 .admin-row {
   grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+  align-items: center;
 }
 
 .admin-row > div {
@@ -289,6 +306,14 @@ textarea {
   grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
 }
 
+.admin-row--form-relation {
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr) 140px 160px auto;
+}
+
+.admin-row--form-node-type {
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.45fr) auto;
+}
+
 .admin-form {
   margin-top: 0;
 }
@@ -305,9 +330,69 @@ textarea {
   grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
 }
 
+.admin-row--data-relation {
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr) 120px 160px;
+  align-items: stretch;
+}
+
+.admin-row--data-relation > div {
+  display: flex;
+  align-items: center;
+  min-height: 100%;
+}
+
+.admin-row--data-node-type {
+  grid-template-columns: minmax(220px, 1fr) 120px minmax(160px, 1fr);
+}
+
 .admin-row--data > div {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.admin-cell-wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.admin-row--data-relation .admin-cell-wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.admin-subsection-title {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #333;
+}
+
+.admin-subsection-title--spaced {
+  margin-top: 20px;
+}
+
+.admin-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin: 0;
+}
+
+.admin-checkbox input {
+  width: auto;
+  margin: 0;
+}
+
+.admin-group {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-group--spaced {
+  margin-top: 24px;
 }
 
 .admin-toolbar button:disabled {
