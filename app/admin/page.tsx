@@ -293,33 +293,46 @@ export default function EdgesAdminPage() {
         edgesByNode.set(edge.child_id, childEdges);
       }
 
-      const visited = new Set<number>(seedIds);
-      const queue = Array.from(seedIds);
       const resultKeys = new Set<string>();
       const indirectKeys = new Set<string>();
       const edgeSourceNodeId = new Map<string, number>();
 
-      while (queue.length > 0) {
-        const nodeId = queue.shift();
-        if (nodeId === undefined) break;
-        const connectedEdges = edgesByNode.get(nodeId) ?? [];
+      for (const seedId of seedIds) {
+        const connectedEdges = edgesByNode.get(seedId) ?? [];
         for (const edge of connectedEdges) {
           const key = edgeKey(edge);
           resultKeys.add(key);
           if (!edgeSourceNodeId.has(key)) {
-            edgeSourceNodeId.set(key, nodeId);
+            edgeSourceNodeId.set(key, seedId);
           }
-          const isDirect =
-            seedIds.has(edge.parent_id) || seedIds.has(edge.child_id);
-          if (!isDirect) {
-            indirectKeys.add(key);
-          }
-          if (!transitiveRelations.has(edge.relation)) continue;
-          const nextNodeId =
-            edge.parent_id === nodeId ? edge.child_id : edge.parent_id;
-          if (!visited.has(nextNodeId)) {
-            visited.add(nextNodeId);
-            queue.push(nextNodeId);
+        }
+      }
+
+      for (const relation of transitiveRelations) {
+        const relationVisited = new Set<number>(seedIds);
+        const relationQueue = Array.from(seedIds);
+        while (relationQueue.length > 0) {
+          const nodeId = relationQueue.shift();
+          if (nodeId === undefined) break;
+          const connectedEdges = edgesByNode.get(nodeId) ?? [];
+          for (const edge of connectedEdges) {
+            if (edge.relation !== relation) continue;
+            const key = edgeKey(edge);
+            const isDirect =
+              seedIds.has(edge.parent_id) || seedIds.has(edge.child_id);
+            resultKeys.add(key);
+            if (!edgeSourceNodeId.has(key)) {
+              edgeSourceNodeId.set(key, nodeId);
+            }
+            if (!isDirect) {
+              indirectKeys.add(key);
+            }
+            const nextNodeId =
+              edge.parent_id === nodeId ? edge.child_id : edge.parent_id;
+            if (!relationVisited.has(nextNodeId)) {
+              relationVisited.add(nextNodeId);
+              relationQueue.push(nextNodeId);
+            }
           }
         }
       }
