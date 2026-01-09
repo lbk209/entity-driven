@@ -379,14 +379,15 @@ export default function EdgesAdminPage() {
       }
 
       for (const relation of transitiveRelations) {
-        const relationVisited = new Set<number>(seedIds);
-        const relationQueue = Array.from(seedIds);
-        while (relationQueue.length > 0) {
-          const nodeId = relationQueue.shift();
+        const forwardVisited = new Set<number>(seedIds);
+        const forwardQueue = Array.from(seedIds);
+        while (forwardQueue.length > 0) {
+          const nodeId = forwardQueue.shift();
           if (nodeId === undefined) break;
           const connectedEdges = edgesByNode.get(nodeId) ?? [];
           for (const edge of connectedEdges) {
             if (edge.relation !== relation) continue;
+            if (edge.parent_id !== nodeId) continue;
             const key = edgeKey(edge);
             const isDirect =
               seedIds.has(edge.parent_id) || seedIds.has(edge.child_id);
@@ -397,11 +398,37 @@ export default function EdgesAdminPage() {
             if (!isDirect) {
               indirectKeys.add(key);
             }
-            const nextNodeId =
-              edge.parent_id === nodeId ? edge.child_id : edge.parent_id;
-            if (!relationVisited.has(nextNodeId)) {
-              relationVisited.add(nextNodeId);
-              relationQueue.push(nextNodeId);
+            const nextNodeId = edge.child_id;
+            if (!forwardVisited.has(nextNodeId)) {
+              forwardVisited.add(nextNodeId);
+              forwardQueue.push(nextNodeId);
+            }
+          }
+        }
+
+        const reverseVisited = new Set<number>(seedIds);
+        const reverseQueue = Array.from(seedIds);
+        while (reverseQueue.length > 0) {
+          const nodeId = reverseQueue.shift();
+          if (nodeId === undefined) break;
+          const connectedEdges = edgesByNode.get(nodeId) ?? [];
+          for (const edge of connectedEdges) {
+            if (edge.relation !== relation) continue;
+            if (edge.child_id !== nodeId) continue;
+            const key = edgeKey(edge);
+            const isDirect =
+              seedIds.has(edge.parent_id) || seedIds.has(edge.child_id);
+            resultKeys.add(key);
+            if (!edgeSourceNodeId.has(key)) {
+              edgeSourceNodeId.set(key, nodeId);
+            }
+            if (!isDirect) {
+              indirectKeys.add(key);
+            }
+            const nextNodeId = edge.parent_id;
+            if (!reverseVisited.has(nextNodeId)) {
+              reverseVisited.add(nextNodeId);
+              reverseQueue.push(nextNodeId);
             }
           }
         }
