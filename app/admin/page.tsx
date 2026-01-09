@@ -238,6 +238,76 @@ export default function EdgesAdminPage() {
       .sort((a, b) => a.localeCompare(b));
   }, [edgeRelations]);
 
+  const edgeRelationLookup = useMemo(() => {
+    const map = new Map<string, EdgeRelation>();
+    for (const relation of edgeRelations) {
+      map.set(relation.relation, relation);
+    }
+    return map;
+  }, [edgeRelations]);
+
+  function getNodeType(nodeId: number | null) {
+    if (!nodeId) return null;
+    return nodeMap.get(nodeId)?.type ?? null;
+  }
+
+  function getAllowedRelations(parentId: number | null, childId: number | null) {
+    const parentType = getNodeType(parentId);
+    const childType = getNodeType(childId);
+    if (!parentType && !childType) return relationOptions;
+    return relationOptions.filter((relationName) => {
+      const relation = edgeRelationLookup.get(relationName);
+      if (!relation) return false;
+      if (parentType) {
+        if (
+          relation.allowed_parent_types.length === 0 ||
+          !relation.allowed_parent_types.includes(parentType)
+        ) {
+          return false;
+        }
+      }
+      if (childType) {
+        if (
+          relation.allowed_child_types.length === 0 ||
+          !relation.allowed_child_types.includes(childType)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  function isNodeAllowedForRelation(
+    relationName: string,
+    kind: 'parent' | 'child',
+    nodeId: number | null
+  ) {
+    if (!relationName || !nodeId) return true;
+    const relation = edgeRelationLookup.get(relationName);
+    if (!relation) return false;
+    const nodeType = getNodeType(nodeId);
+    if (!nodeType) return false;
+    const allowedTypes =
+      kind === 'parent'
+        ? relation.allowed_parent_types
+        : relation.allowed_child_types;
+    if (allowedTypes.length === 0) return false;
+    return allowedTypes.includes(nodeType);
+  }
+
+  function getAllowedNodes(relationName: string, kind: 'parent' | 'child') {
+    if (!relationName) return nodes;
+    const relation = edgeRelationLookup.get(relationName);
+    const allowedTypes =
+      kind === 'parent'
+        ? relation?.allowed_parent_types
+        : relation?.allowed_child_types;
+    if (!allowedTypes || allowedTypes.length === 0) return [];
+    const allowedSet = new Set(allowedTypes);
+    return nodes.filter((node) => allowedSet.has(node.type));
+  }
+
   const filteredNodes = useMemo(() => {
     const term = nodeSearch.trim().toLowerCase();
     if (!term) return nodes;
@@ -1534,12 +1604,22 @@ export default function EdgesAdminPage() {
                     aria-label="Parent node"
                     value={editEdge.parent_id}
                     onChange={(event) =>
-                      updateEditEdge({
-                        parent_id: Number(event.target.value)
-                      })
+                      (() => {
+                        const nextParentId = Number(event.target.value);
+                        const nextRelations = getAllowedRelations(
+                          nextParentId,
+                          editEdge.child_id
+                        );
+                        updateEditEdge({
+                          parent_id: nextParentId,
+                          relation: nextRelations.includes(editEdge.relation)
+                            ? editEdge.relation
+                            : ''
+                        });
+                      })()
                     }
                   >
-                    {nodes.map((node) => (
+                    {getAllowedNodes(editEdge.relation, 'parent').map((node) => (
                       <option key={node.id} value={node.id}>
                         {node.name} ({node.type})
                       </option>
@@ -1556,11 +1636,14 @@ export default function EdgesAdminPage() {
                       })
                     }
                   >
-                    {relationOptions.map((relation) => (
-                      <option key={relation} value={relation}>
-                        {relation}
-                      </option>
-                    ))}
+                    <option value="">Select relation</option>
+                    {getAllowedRelations(editEdge.parent_id, editEdge.child_id).map(
+                      (relation) => (
+                        <option key={relation} value={relation}>
+                          {relation}
+                        </option>
+                      )
+                    )}
                   </select>
                 </div>
                 <div>
@@ -1568,12 +1651,22 @@ export default function EdgesAdminPage() {
                     aria-label="Child node"
                     value={editEdge.child_id}
                     onChange={(event) =>
-                      updateEditEdge({
-                        child_id: Number(event.target.value)
-                      })
+                      (() => {
+                        const nextChildId = Number(event.target.value);
+                        const nextRelations = getAllowedRelations(
+                          editEdge.parent_id,
+                          nextChildId
+                        );
+                        updateEditEdge({
+                          child_id: nextChildId,
+                          relation: nextRelations.includes(editEdge.relation)
+                            ? editEdge.relation
+                            : ''
+                        });
+                      })()
                     }
                   >
-                    {nodes.map((node) => (
+                    {getAllowedNodes(editEdge.relation, 'child').map((node) => (
                       <option key={node.id} value={node.id}>
                         {node.name} ({node.type})
                       </option>
@@ -1610,13 +1703,25 @@ export default function EdgesAdminPage() {
                     aria-label="Parent node"
                     value={draft.parent_id ?? ''}
                     onChange={(event) =>
-                      updateDraft(draft.draftId, {
-                        parent_id: event.target.value ? Number(event.target.value) : null
-                      })
+                      (() => {
+                        const nextParentId = event.target.value
+                          ? Number(event.target.value)
+                          : null;
+                        const nextRelations = getAllowedRelations(
+                          nextParentId,
+                          draft.child_id
+                        );
+                        updateDraft(draft.draftId, {
+                          parent_id: nextParentId,
+                          relation: nextRelations.includes(draft.relation)
+                            ? draft.relation
+                            : ''
+                        });
+                      })()
                     }
                   >
                     <option value="">Select parent</option>
-                    {nodes.map((node) => (
+                    {getAllowedNodes(draft.relation, 'parent').map((node) => (
                       <option key={node.id} value={node.id}>
                         {node.name} ({node.type})
                       </option>
@@ -1629,17 +1734,46 @@ export default function EdgesAdminPage() {
                     aria-label="Relation"
                     value={draft.relation}
                     onChange={(event) =>
-                      updateDraft(draft.draftId, {
-                        relation: event.target.value
-                      })
+                      (() => {
+                        const nextRelation = event.target.value;
+                        let nextParentId = draft.parent_id;
+                        let nextChildId = draft.child_id;
+                        if (nextRelation) {
+                          if (
+                            !isNodeAllowedForRelation(
+                              nextRelation,
+                              'parent',
+                              nextParentId
+                            )
+                          ) {
+                            nextParentId = null;
+                          }
+                          if (
+                            !isNodeAllowedForRelation(
+                              nextRelation,
+                              'child',
+                              nextChildId
+                            )
+                          ) {
+                            nextChildId = null;
+                          }
+                        }
+                        updateDraft(draft.draftId, {
+                          relation: nextRelation,
+                          parent_id: nextParentId,
+                          child_id: nextChildId
+                        });
+                      })()
                     }
                   >
                     <option value="">Select relation</option>
-                    {relationOptions.map((relation) => (
+                    {getAllowedRelations(draft.parent_id, draft.child_id).map(
+                      (relation) => (
                       <option key={relation} value={relation}>
                         {relation}
                       </option>
-                    ))}
+                      )
+                    )}
                   </select>
                 </div>
                 <div>
@@ -1648,13 +1782,25 @@ export default function EdgesAdminPage() {
                     aria-label="Child node"
                     value={draft.child_id ?? ''}
                     onChange={(event) =>
-                      updateDraft(draft.draftId, {
-                        child_id: event.target.value ? Number(event.target.value) : null
-                      })
+                      (() => {
+                        const nextChildId = event.target.value
+                          ? Number(event.target.value)
+                          : null;
+                        const nextRelations = getAllowedRelations(
+                          draft.parent_id,
+                          nextChildId
+                        );
+                        updateDraft(draft.draftId, {
+                          child_id: nextChildId,
+                          relation: nextRelations.includes(draft.relation)
+                            ? draft.relation
+                            : ''
+                        });
+                      })()
                     }
                   >
                     <option value="">Select child</option>
-                    {nodes.map((node) => (
+                    {getAllowedNodes(draft.relation, 'child').map((node) => (
                       <option key={node.id} value={node.id}>
                         {node.name} ({node.type})
                       </option>
