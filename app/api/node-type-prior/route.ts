@@ -5,7 +5,11 @@ export const runtime = 'nodejs';
 
 function parseNodeTypePayload(body: unknown) {
   if (!body || typeof body !== 'object') return null;
-  const record = body as { node_type?: string; base_prior?: number | string | null };
+  const record = body as {
+    node_type?: string;
+    base_prior?: number | string | null;
+    description?: string | null;
+  };
   const nodeType = record.node_type?.trim();
   if (!nodeType) return null;
   const basePriorRaw =
@@ -14,7 +18,8 @@ function parseNodeTypePayload(body: unknown) {
       : record.base_prior;
   const basePrior = basePriorRaw === null ? null : Number(basePriorRaw);
   if (basePrior !== null && !Number.isFinite(basePrior)) return null;
-  return { nodeType, basePrior };
+  const description = record.description?.trim() || null;
+  return { nodeType, basePrior, description };
 }
 
 function parseNodeTypeUpdatePayload(body: unknown) {
@@ -35,7 +40,7 @@ export async function GET() {
   const nodeTypes = db
     .prepare(
       `
-      SELECT node_type, base_prior, updated_at
+      SELECT node_type, base_prior, description, updated_at
       FROM node_type_prior
       ORDER BY node_type ASC
     `
@@ -68,11 +73,11 @@ export async function POST(request: Request) {
   db
     .prepare(
       `
-      INSERT INTO node_type_prior (node_type, base_prior, updated_at)
-      VALUES (?, ?, datetime('now'))
+      INSERT INTO node_type_prior (node_type, base_prior, description, updated_at)
+      VALUES (?, ?, ?, datetime('now'))
     `
     )
-    .run(payload.nodeType, payload.basePrior);
+    .run(payload.nodeType, payload.basePrior, payload.description);
 
   return NextResponse.json({ ok: true });
 }
@@ -99,11 +104,11 @@ export async function PUT(request: Request) {
       db
         .prepare(
           `
-          INSERT INTO node_type_prior (node_type, base_prior, updated_at)
-          VALUES (?, ?, datetime('now'))
+          INSERT INTO node_type_prior (node_type, base_prior, description, updated_at)
+          VALUES (?, ?, ?, datetime('now'))
         `
         )
-        .run(payload.nodeType, payload.basePrior);
+        .run(payload.nodeType, payload.basePrior, payload.description);
       db
         .prepare('UPDATE nodes SET type = ? WHERE type = ?')
         .run(payload.nodeType, payload.originalNodeType);
@@ -115,11 +120,11 @@ export async function PUT(request: Request) {
         .prepare(
           `
           UPDATE node_type_prior
-          SET base_prior = ?, updated_at = datetime('now')
+          SET base_prior = ?, description = ?, updated_at = datetime('now')
           WHERE node_type = ?
         `
         )
-        .run(payload.basePrior, payload.nodeType);
+        .run(payload.basePrior, payload.description, payload.nodeType);
     }
   });
 

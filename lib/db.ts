@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS review (
 CREATE TABLE IF NOT EXISTS node_type_prior (
   node_type TEXT PRIMARY KEY,
   base_prior REAL,
+  description TEXT,
   updated_at TEXT
 );
 
@@ -116,9 +117,19 @@ export function getDb() {
     CREATE TABLE IF NOT EXISTS node_type_prior (
       node_type TEXT PRIMARY KEY,
       base_prior REAL,
+      description TEXT,
       updated_at TEXT
     );
   `);
+  const nodeTypePriorColumns = db
+    .prepare("PRAGMA table_info('node_type_prior')")
+    .all() as Array<{ name: string }>;
+  const hasNodeTypeDescription = nodeTypePriorColumns.some(
+    (column) => column.name === 'description'
+  );
+  if (!hasNodeTypeDescription) {
+    db.exec("ALTER TABLE node_type_prior ADD COLUMN description TEXT;");
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS edge_relations (
       relation TEXT PRIMARY KEY,

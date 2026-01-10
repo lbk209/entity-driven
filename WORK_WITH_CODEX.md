@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS review (
 CREATE TABLE IF NOT EXISTS node_type_prior (
   node_type TEXT PRIMARY KEY,
   base_prior REAL,
+  description TEXT,
   updated_at TEXT
 );
 

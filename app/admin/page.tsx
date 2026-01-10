@@ -30,6 +30,7 @@ type EdgeRelation = {
 type NodeTypePrior = {
   node_type: string;
   base_prior: number | null;
+  description: string | null;
   updated_at: string | null;
 };
 
@@ -60,6 +61,7 @@ type DraftNodeTypePrior = {
   draftId: string;
   node_type: string;
   base_prior: string;
+  description: string;
 };
 type EditNode = NodeOption & { original_id: number };
 type EditEdge = Edge & {
@@ -597,7 +599,8 @@ export default function EdgesAdminPage() {
     const draft: DraftNodeTypePrior = {
       draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       node_type: '',
-      base_prior: ''
+      base_prior: '',
+      description: ''
     };
     setNodeTypeDrafts((prev) => [...prev, draft]);
     setStatus('');
@@ -816,7 +819,8 @@ export default function EdgesAdminPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         node_type: draft.node_type,
-        base_prior: basePriorValue
+        base_prior: basePriorValue,
+        description: draft.description
       })
     });
     if (!res.ok) {
@@ -827,7 +831,7 @@ export default function EdgesAdminPage() {
     setNodeTypeDrafts((prev) =>
       prev.map((item) =>
         item.draftId === draft.draftId
-          ? { ...item, node_type: '', base_prior: '' }
+          ? { ...item, node_type: '', base_prior: '', description: '' }
           : item
       )
     );
@@ -931,6 +935,7 @@ export default function EdgesAdminPage() {
       body: JSON.stringify({
         node_type: nodeType.node_type,
         base_prior: basePriorValue,
+        description: nodeType.description,
         original_node_type: nodeType.original_node_type
       })
     });
@@ -1100,6 +1105,7 @@ export default function EdgesAdminPage() {
     if (nodeTypeDrafts.length > 0) return;
     setEditNodeTypePrior({
       ...nodeType,
+      description: nodeType.description ?? '',
       original_node_type: nodeType.node_type
     });
   }
@@ -2127,72 +2133,15 @@ export default function EdgesAdminPage() {
             {referenceView === 'priors' && (
               <>
                 {editNodeTypePrior ? (
-                  <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
-                    <div>
-                      <input
-                        aria-label="Node type"
-                        placeholder="Node type"
-                        value={editNodeTypePrior.node_type}
-                        onChange={(event) =>
-                          updateEditNodeTypePrior({ node_type: event.target.value })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <input
-                        aria-label="Base prior"
-                        placeholder="Base prior"
-                        type="number"
-                        step="0.01"
-                        value={editNodeTypePrior.base_prior ?? ''}
-                        onChange={(event) =>
-                          updateEditNodeTypePrior({
-                            base_prior: event.target.value
-                              ? Number(event.target.value)
-                              : null
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="admin-row__actions admin-row__actions--form">
-                      <div className="button-row">
-                        <button
-                          type="button"
-                          onClick={() => saveEditNodeTypePrior(editNodeTypePrior)}
-                        >
-                          Update
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteNodeTypePrior(editNodeTypePrior)}
-                        >
-                          Delete
-                        </button>
-                        <button
-                          type="button"
-                          className="button-link button-link--ghost"
-                          onClick={cancelEditNodeTypePrior}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : nodeTypeDrafts.length > 0 ? (
-                  nodeTypeDrafts.map((draft) => (
-                    <div
-                      className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form"
-                      key={draft.draftId}
-                    >
+                  <>
+                    <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
                       <div>
                         <input
                           aria-label="Node type"
                           placeholder="Node type"
-                          value={draft.node_type}
+                          value={editNodeTypePrior.node_type}
                           onChange={(event) =>
-                            updateNodeTypeDraft(draft.draftId, {
-                              node_type: event.target.value
-                            })
+                            updateEditNodeTypePrior({ node_type: event.target.value })
                           }
                         />
                       </div>
@@ -2202,27 +2151,114 @@ export default function EdgesAdminPage() {
                           placeholder="Base prior"
                           type="number"
                           step="0.01"
-                          value={draft.base_prior}
+                          value={editNodeTypePrior.base_prior ?? ''}
                           onChange={(event) =>
-                            updateNodeTypeDraft(draft.draftId, {
+                            updateEditNodeTypePrior({
                               base_prior: event.target.value
+                                ? Number(event.target.value)
+                                : null
                             })
                           }
                         />
                       </div>
                       <div className="admin-row__actions admin-row__actions--form">
                         <div className="button-row">
-                          <button type="button" onClick={() => saveNodeTypeDraft(draft)}>
-                            Save
+                          <button
+                            type="button"
+                            onClick={() => saveEditNodeTypePrior(editNodeTypePrior)}
+                          >
+                            Update
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteNodeTypePrior(editNodeTypePrior)}
+                          >
+                            Delete
                           </button>
                           <button
                             type="button"
                             className="button-link button-link--ghost"
-                            onClick={() => removeNodeTypeDraft(draft.draftId)}
+                            onClick={cancelEditNodeTypePrior}
                           >
                             Cancel
                           </button>
                         </div>
+                      </div>
+                    </div>
+                    <div className="admin-form">
+                      <textarea
+                        className="admin-textarea--compact"
+                        aria-label="Node type description"
+                        placeholder="Description"
+                        rows={2}
+                        value={editNodeTypePrior.description ?? ''}
+                        onChange={(event) =>
+                          updateEditNodeTypePrior({ description: event.target.value })
+                        }
+                      />
+                    </div>
+                  </>
+                ) : nodeTypeDrafts.length > 0 ? (
+                  nodeTypeDrafts.map((draft) => (
+                    <div key={draft.draftId}>
+                      <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
+                        <div>
+                          <input
+                            aria-label="Node type"
+                            placeholder="Node type"
+                            value={draft.node_type}
+                            onChange={(event) =>
+                              updateNodeTypeDraft(draft.draftId, {
+                                node_type: event.target.value
+                              })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <input
+                            aria-label="Base prior"
+                            placeholder="Base prior"
+                            type="number"
+                            step="0.01"
+                            value={draft.base_prior}
+                            onChange={(event) =>
+                              updateNodeTypeDraft(draft.draftId, {
+                                base_prior: event.target.value
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="admin-row__actions admin-row__actions--form">
+                          <div className="button-row">
+                            <button
+                              type="button"
+                              onClick={() => saveNodeTypeDraft(draft)}
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="button-link button-link--ghost"
+                              onClick={() => removeNodeTypeDraft(draft.draftId)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="admin-form">
+                        <textarea
+                          className="admin-textarea--compact"
+                          aria-label="Node type description"
+                          placeholder="Description"
+                          rows={2}
+                          value={draft.description}
+                          onChange={(event) =>
+                            updateNodeTypeDraft(draft.draftId, {
+                              description: event.target.value
+                            })
+                          }
+                        />
                       </div>
                     </div>
                   ))
