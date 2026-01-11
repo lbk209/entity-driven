@@ -82,6 +82,8 @@ type EditEdgeRelation = {
   allowed_child_types: string;
 };
 type EditNodeTypePrior = NodeTypePrior & { original_node_type: string };
+type SortDirection = 'asc' | 'desc';
+type SortState<T extends string> = { key: T; direction: SortDirection };
 
 function listToString(list: string[]) {
   return list.join(', ');
@@ -92,6 +94,26 @@ function parseTypeList(value: string) {
     .split(',')
     .map((item) => item.trim())
     .filter((item) => item);
+}
+
+function compareText(a: string, b: string) {
+  return a.localeCompare(b);
+}
+
+function compareNumber(a: number, b: number) {
+  return a === b ? 0 : a > b ? 1 : -1;
+}
+
+function nextSort<T extends string>(current: SortState<T>, key: T): SortState<T> {
+  if (current.key === key) {
+    return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' };
+  }
+  return { key, direction: 'asc' };
+}
+
+function sortIndicator<T extends string>(current: SortState<T>, key: T) {
+  if (current.key !== key) return '';
+  return current.direction === 'asc' ? 'asc' : 'desc';
 }
 
 function edgeKey(edge: Edge) {
@@ -215,6 +237,34 @@ export default function EdgesAdminPage() {
   const [nodeTypeFilterActive, setNodeTypeFilterActive] = useState(false);
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
+  const [nodeSort, setNodeSort] = useState<SortState<'id' | 'name' | 'type'>>({
+    key: 'name',
+    direction: 'asc'
+  });
+  const [aliasSort, setAliasSort] = useState<
+    SortState<'alias' | 'node' | 'review_id'>
+  >({
+    key: 'alias',
+    direction: 'asc'
+  });
+  const [edgeSort, setEdgeSort] = useState<
+    SortState<'parent' | 'relation' | 'child'>
+  >({
+    key: 'parent',
+    direction: 'asc'
+  });
+  const [relationSort, setRelationSort] = useState<
+    SortState<'parent_types' | 'relation' | 'child_types' | 'default_weight' | 'transitive'>
+  >({
+    key: 'relation',
+    direction: 'asc'
+  });
+  const [priorSort, setPriorSort] = useState<
+    SortState<'node_type' | 'base_prior' | 'updated_at'>
+  >({
+    key: 'node_type',
+    direction: 'asc'
+  });
 
   const nodeMap = useMemo(() => {
     const map = new Map<number, NodeOption>();
@@ -321,6 +371,19 @@ export default function EdgesAdminPage() {
       return nameMatch;
     });
   }, [nodes, nodeSearch, nodeSearchField]);
+
+  const sortedNodes = useMemo(() => {
+    const list = [...filteredNodes];
+    const dir = nodeSort.direction === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (nodeSort.key === 'id') return compareNumber(a.id, b.id) * dir;
+      if (nodeSort.key === 'type') {
+        return compareText(a.type.toLowerCase(), b.type.toLowerCase()) * dir;
+      }
+      return compareText(a.name.toLowerCase(), b.name.toLowerCase()) * dir;
+    });
+    return list;
+  }, [filteredNodes, nodeSort]);
 
   const filteredEdgesResult = useMemo(() => {
     const term = edgeSearch.trim().toLowerCase();
@@ -476,6 +539,76 @@ export default function EdgesAdminPage() {
     };
   }, [edgeRelations, edges, edgeSearch, edgeSearchField, nodeMap, nodes]);
 
+  const sortedEdges = useMemo(() => {
+    const list = [...filteredEdgesResult.edges];
+    const dir = edgeSort.direction === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (edgeSort.key === 'relation') {
+        return compareText(a.relation.toLowerCase(), b.relation.toLowerCase()) * dir;
+      }
+      if (edgeSort.key === 'child') {
+        const aName = nodeMap.get(a.child_id)?.name ?? String(a.child_id);
+        const bName = nodeMap.get(b.child_id)?.name ?? String(b.child_id);
+        return compareText(aName.toLowerCase(), bName.toLowerCase()) * dir;
+      }
+      const aName = nodeMap.get(a.parent_id)?.name ?? String(a.parent_id);
+      const bName = nodeMap.get(b.parent_id)?.name ?? String(b.parent_id);
+      return compareText(aName.toLowerCase(), bName.toLowerCase()) * dir;
+    });
+    return list;
+  }, [edgeSort, filteredEdgesResult.edges, nodeMap]);
+
+  const sortedEdgeRelations = useMemo(() => {
+    const list = [...edgeRelations];
+    const dir = relationSort.direction === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (relationSort.key === 'default_weight') {
+        if (a.default_weight === null && b.default_weight === null) return 0;
+        if (a.default_weight === null) return 1;
+        if (b.default_weight === null) return -1;
+        return compareNumber(a.default_weight, b.default_weight) * dir;
+      }
+      if (relationSort.key === 'transitive') {
+        const aValue = a.is_transitive ? 1 : 0;
+        const bValue = b.is_transitive ? 1 : 0;
+        return compareNumber(aValue, bValue) * dir;
+      }
+      if (relationSort.key === 'parent_types') {
+        const aLabel = listToString(a.allowed_parent_types).toLowerCase();
+        const bLabel = listToString(b.allowed_parent_types).toLowerCase();
+        return compareText(aLabel, bLabel) * dir;
+      }
+      if (relationSort.key === 'child_types') {
+        const aLabel = listToString(a.allowed_child_types).toLowerCase();
+        const bLabel = listToString(b.allowed_child_types).toLowerCase();
+        return compareText(aLabel, bLabel) * dir;
+      }
+      return compareText(a.relation.toLowerCase(), b.relation.toLowerCase()) * dir;
+    });
+    return list;
+  }, [edgeRelations, relationSort]);
+
+  const sortedNodeTypePriors = useMemo(() => {
+    const list = [...nodeTypePriors];
+    const dir = priorSort.direction === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (priorSort.key === 'base_prior') {
+        if (a.base_prior === null && b.base_prior === null) return 0;
+        if (a.base_prior === null) return 1;
+        if (b.base_prior === null) return -1;
+        return compareNumber(a.base_prior, b.base_prior) * dir;
+      }
+      if (priorSort.key === 'updated_at') {
+        if (!a.updated_at && !b.updated_at) return 0;
+        if (!a.updated_at) return 1;
+        if (!b.updated_at) return -1;
+        return compareText(a.updated_at, b.updated_at) * dir;
+      }
+      return compareText(a.node_type.toLowerCase(), b.node_type.toLowerCase()) * dir;
+    });
+    return list;
+  }, [nodeTypePriors, priorSort]);
+
   const filteredAliases = useMemo(() => {
     const term = aliasSearch.trim().toLowerCase();
     if (!term) return aliases;
@@ -486,6 +619,23 @@ export default function EdgesAdminPage() {
       return alias.alias.toLowerCase().includes(term);
     });
   }, [aliases, aliasSearch, aliasSearchField, nodeMap]);
+
+  const sortedAliases = useMemo(() => {
+    const list = [...filteredAliases];
+    const dir = aliasSort.direction === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (aliasSort.key === 'review_id') {
+        return compareNumber(a.review_id, b.review_id) * dir;
+      }
+      if (aliasSort.key === 'node') {
+        const aName = nodeMap.get(a.node_id)?.name.toLowerCase() ?? '';
+        const bName = nodeMap.get(b.node_id)?.name.toLowerCase() ?? '';
+        return compareText(aName, bName) * dir;
+      }
+      return compareText(a.alias.toLowerCase(), b.alias.toLowerCase()) * dir;
+    });
+    return list;
+  }, [filteredAliases, aliasSort, nodeMap]);
 
   async function loadNodes() {
     const res = await fetch('/api/nodes');
@@ -2176,15 +2326,48 @@ export default function EdgesAdminPage() {
         {activeTab === 'nodes' && (
           <>
             <div className="admin-scroll">
-              {filteredNodes.length > 0 && (
-                <div className="row review-footer admin-row admin-row--header">
-                  <div>Id</div>
-                  <div>Name</div>
-                  <div>Type</div>
+              {sortedNodes.length > 0 && (
+                <div className="row review-footer admin-row admin-row--header admin-row--data">
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setNodeSort((prev) => nextSort(prev, 'id'))}
+                    >
+                      Id
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(nodeSort, 'id')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setNodeSort((prev) => nextSort(prev, 'name'))}
+                    >
+                      Name
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(nodeSort, 'name')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setNodeSort((prev) => nextSort(prev, 'type'))}
+                    >
+                      Type
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(nodeSort, 'type')}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               )}
-              {filteredNodes.length === 0 && <small>No nodes found.</small>}
-              {filteredNodes.map((node) => (
+              {sortedNodes.length === 0 && <small>No nodes found.</small>}
+              {sortedNodes.map((node) => (
                 <div
                   className="row review-footer admin-row admin-row--data admin-row--clickable"
                   key={`${node.id}-${node.name}-${node.type}`}
@@ -2202,15 +2385,48 @@ export default function EdgesAdminPage() {
         {activeTab === 'aliases' && (
           <>
             <div className="admin-scroll">
-              {filteredAliases.length > 0 && (
+              {sortedAliases.length > 0 && (
                 <div className="row review-footer admin-row admin-row--header admin-row--data-alias">
-                  <div>Alias</div>
-                  <div>Node</div>
-                  <div>Review</div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setAliasSort((prev) => nextSort(prev, 'alias'))}
+                    >
+                      Alias
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(aliasSort, 'alias')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setAliasSort((prev) => nextSort(prev, 'node'))}
+                    >
+                      Node
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(aliasSort, 'node')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setAliasSort((prev) => nextSort(prev, 'review_id'))}
+                    >
+                      Review
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(aliasSort, 'review_id')}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               )}
-              {filteredAliases.length === 0 && <small>No aliases found.</small>}
-              {filteredAliases.map((alias) => {
+              {sortedAliases.length === 0 && <small>No aliases found.</small>}
+              {sortedAliases.map((alias) => {
                 const node = nodeMap.get(alias.node_id);
                 const nodeLabel = node ? node.name : alias.node_id;
                 return (
@@ -2232,15 +2448,48 @@ export default function EdgesAdminPage() {
         {activeTab === 'edges' && (
           <>
             <div className="admin-scroll">
-              {filteredEdgesResult.edges.length > 0 && (
+              {sortedEdges.length > 0 && (
                 <div className="row review-footer admin-row admin-row--header admin-row--data-edge">
-                  <div>Parent</div>
-                  <div>Relation</div>
-                  <div>Child</div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setEdgeSort((prev) => nextSort(prev, 'parent'))}
+                    >
+                      Parent
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(edgeSort, 'parent')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setEdgeSort((prev) => nextSort(prev, 'relation'))}
+                    >
+                      Relation
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(edgeSort, 'relation')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setEdgeSort((prev) => nextSort(prev, 'child'))}
+                    >
+                      Child
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(edgeSort, 'child')}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               )}
-              {filteredEdgesResult.edges.length === 0 && <small>No edges found.</small>}
-              {filteredEdgesResult.edges.map((edge, index) => {
+              {sortedEdges.length === 0 && <small>No edges found.</small>}
+              {sortedEdges.map((edge, index) => {
                 const parent = nodeMap.get(edge.parent_id);
                 const child = nodeMap.get(edge.child_id);
                 const isIndirect =
@@ -2288,15 +2537,80 @@ export default function EdgesAdminPage() {
               {referenceView === 'relations' && (
                 <div className="admin-group">
                   <div className="row review-footer admin-row admin-row--header admin-row--data-relation">
-                    <div>Parent types</div>
-                    <div>Relation</div>
-                    <div>Child types</div>
-                    <div>Default weight</div>
-                    <div>Transitive</div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setRelationSort((prev) => nextSort(prev, 'parent_types'))
+                        }
+                      >
+                        Parent types
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(relationSort, 'parent_types')}
+                        </span>
+                      </button>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setRelationSort((prev) => nextSort(prev, 'relation'))
+                        }
+                      >
+                        Relation
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(relationSort, 'relation')}
+                        </span>
+                      </button>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setRelationSort((prev) => nextSort(prev, 'child_types'))
+                        }
+                      >
+                        Child types
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(relationSort, 'child_types')}
+                        </span>
+                      </button>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setRelationSort((prev) => nextSort(prev, 'default_weight'))
+                        }
+                      >
+                        Default weight
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(relationSort, 'default_weight')}
+                        </span>
+                      </button>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setRelationSort((prev) => nextSort(prev, 'transitive'))
+                        }
+                      >
+                        Transitive
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(relationSort, 'transitive')}
+                        </span>
+                      </button>
+                    </div>
                     <div></div>
                   </div>
-                  {edgeRelations.length === 0 && <small>No relations found.</small>}
-                  {edgeRelations.map((relation) => (
+                  {sortedEdgeRelations.length === 0 && <small>No relations found.</small>}
+                  {sortedEdgeRelations.map((relation) => (
                     <div
                       className="row review-footer admin-row admin-row--data admin-row--data-relation admin-row--clickable"
                       key={relation.relation}
@@ -2322,12 +2636,53 @@ export default function EdgesAdminPage() {
               {referenceView === 'priors' && (
                 <div className="admin-group">
                   <div className="row review-footer admin-row admin-row--header admin-row--data-node-type">
-                    <div>Node type</div>
-                    <div>Base prior</div>
-                    <div>Updated</div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setPriorSort((prev) => nextSort(prev, 'node_type'))
+                        }
+                      >
+                        Node type
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(priorSort, 'node_type')}
+                        </span>
+                      </button>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setPriorSort((prev) => nextSort(prev, 'base_prior'))
+                        }
+                      >
+                        Base prior
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(priorSort, 'base_prior')}
+                        </span>
+                      </button>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setPriorSort((prev) => nextSort(prev, 'updated_at'))
+                        }
+                      >
+                        Updated
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(priorSort, 'updated_at')}
+                        </span>
+                      </button>
+                    </div>
                   </div>
-                  {nodeTypePriors.length === 0 && <small>No node types found.</small>}
-                  {nodeTypePriors.map((nodeType) => (
+                  {sortedNodeTypePriors.length === 0 && (
+                    <small>No node types found.</small>
+                  )}
+                  {sortedNodeTypePriors.map((nodeType) => (
                     <div
                       className="row review-footer admin-row admin-row--data admin-row--data-node-type admin-row--clickable"
                       key={nodeType.node_type}
