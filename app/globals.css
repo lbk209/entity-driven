@@ -157,6 +157,11 @@ h1 {
   min-width: 120px;
 }
 
+.admin-toolbar .admin-type-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .admin-select--placeholder {
   color: #8a8a8a;
 }
@@ -334,7 +339,7 @@ textarea {
 }
 
 .admin-row--data {
-  grid-template-columns: 100px minmax(220px, 1fr) minmax(180px, 1fr);
+  grid-template-columns: 100px minmax(220px, 1fr) minmax(180px, 1fr) 100px;
 }
 
 .admin-row--deemphasized {

@@ -121,6 +121,14 @@ export async function PUT(request: Request) {
     db
       .prepare('UPDATE review SET content = ?, updated_at = ? WHERE id = ?')
       .run(body.content, new Date().toISOString(), reviewId);
+    db.prepare(
+      `
+      DELETE FROM review_entity_sentiment
+      WHERE review_entity_id IN (
+        SELECT id FROM review_entity WHERE review_id = ?
+      )
+    `
+    ).run(reviewId);
     db.prepare('DELETE FROM review_entity WHERE review_id = ?').run(reviewId);
 
     const upsertNodeType = db.prepare(
@@ -199,6 +207,14 @@ export async function DELETE(request: Request) {
   }
 
   const tx = db.transaction(() => {
+    db.prepare(
+      `
+      DELETE FROM review_entity_sentiment
+      WHERE review_entity_id IN (
+        SELECT id FROM review_entity WHERE review_id = ?
+      )
+    `
+    ).run(reviewId);
     db.prepare('DELETE FROM review_entity WHERE review_id = ?').run(reviewId);
     db.prepare('DELETE FROM review WHERE id = ?').run(reviewId);
   });

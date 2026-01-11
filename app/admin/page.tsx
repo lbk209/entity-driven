@@ -228,6 +228,8 @@ export default function EdgesAdminPage() {
   const [edgeSearchField, setEdgeSearchField] = useState<
     'parent' | 'child' | 'relation' | 'related'
   >('parent');
+  const [edgeRelatedSuggestOpen, setEdgeRelatedSuggestOpen] = useState(false);
+  const [edgeRelatedSelectedId, setEdgeRelatedSelectedId] = useState<number | null>(null);
   const [aliasSearch, setAliasSearch] = useState('');
   const [aliasSearchField, setAliasSearchField] = useState<'alias' | 'node'>('alias');
   const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
@@ -237,10 +239,9 @@ export default function EdgesAdminPage() {
   const [nodeTypeFilterActive, setNodeTypeFilterActive] = useState(false);
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
-  const [nodeSort, setNodeSort] = useState<SortState<'id' | 'name' | 'type'>>({
-    key: 'name',
-    direction: 'asc'
-  });
+  const [nodeSort, setNodeSort] = useState<
+    SortState<'id' | 'name' | 'type' | 'edges'>
+  >({ key: 'name', direction: 'asc' });
   const [aliasSort, setAliasSort] = useState<
     SortState<'alias' | 'node' | 'review_id'>
   >({
@@ -377,6 +378,9 @@ export default function EdgesAdminPage() {
     const dir = nodeSort.direction === 'asc' ? 1 : -1;
     list.sort((a, b) => {
       if (nodeSort.key === 'id') return compareNumber(a.id, b.id) * dir;
+      if (nodeSort.key === 'edges') {
+        return compareNumber(a.edge_count ?? 0, b.edge_count ?? 0) * dir;
+      }
       if (nodeSort.key === 'type') {
         return compareText(a.type.toLowerCase(), b.type.toLowerCase()) * dir;
       }
@@ -396,16 +400,12 @@ export default function EdgesAdminPage() {
           searchLabel: edgeSearch.trim()
         };
       }
-      const matchedByName = nodes.filter((node) =>
-        node.name.toLowerCase().includes(term)
+      const exactMatches = nodes.filter(
+        (node) => node.name.toLowerCase() === term
       );
-      const seedIds = new Set(matchedByName.map((node) => node.id));
-      const parsedId = Number(term);
-      if (Number.isFinite(parsedId)) {
-        const matchById = nodes.find((node) => node.id === parsedId);
-        if (matchById) seedIds.add(matchById.id);
-      }
-      if (seedIds.size === 0) {
+      const exactId = exactMatches.length === 1 ? exactMatches[0].id : null;
+      const selectedId = edgeRelatedSelectedId ?? exactId;
+      if (!selectedId) {
         return {
           edges: [],
           indirectKeys: new Set<string>(),
@@ -413,6 +413,7 @@ export default function EdgesAdminPage() {
           searchLabel: edgeSearch.trim()
         };
       }
+      const seedIds = new Set([selectedId]);
 
       const transitiveRelations = new Set(
         edgeRelations
@@ -504,14 +505,11 @@ export default function EdgesAdminPage() {
         edges: edges.filter((edge) => resultKeys.has(edgeKey(edge))),
         indirectKeys,
         edgeSourceNodeId,
-        searchLabel:
-          seedIds.size === 1
-            ? (() => {
-                const seedId = Array.from(seedIds)[0];
-                const node = nodeMap.get(seedId);
-                return node ? `${node.name} (${node.type})` : String(seedId);
-              })()
-            : edgeSearch.trim()
+        searchLabel: (() => {
+          const seedId = Array.from(seedIds)[0];
+          const node = nodeMap.get(seedId);
+          return node ? node.name : String(seedId);
+        })()
       };
     }
 
@@ -704,6 +702,13 @@ export default function EdgesAdminPage() {
   useEffect(() => {
     setStatus('');
   }, [activeTab]);
+
+  useEffect(() => {
+    if (edgeSearchField !== 'related') {
+      setEdgeRelatedSelectedId(null);
+      setEdgeRelatedSuggestOpen(false);
+    }
+  }, [edgeSearchField]);
 
   function addNodeDraft() {
     if (nodeDrafts.length > 0 || editNode) return;
@@ -1910,11 +1915,55 @@ export default function EdgesAdminPage() {
                   <option value="relation">Relation</option>
                   <option value="related">Related</option>
                 </select>
-                <input
-                  placeholder="Search edges"
-                  value={edgeSearch}
-                  onChange={(event) => setEdgeSearch(event.target.value)}
-                />
+                <div className="admin-type-input">
+                  <input
+                    placeholder="Search edges"
+                    value={edgeSearch}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setEdgeSearch(nextValue);
+                      if (edgeSearchField === 'related' && edgeRelatedSelectedId) {
+                        const selectedName =
+                          nodeMap.get(edgeRelatedSelectedId)?.name ?? '';
+                        if (nextValue.trim() !== selectedName) {
+                          setEdgeRelatedSelectedId(null);
+                        }
+                      }
+                    }}
+                    onFocus={() => {
+                      if (edgeSearchField === 'related') {
+                        setEdgeRelatedSuggestOpen(true);
+                      }
+                    }}
+                    onBlur={() => {
+                      setEdgeRelatedSuggestOpen(false);
+                    }}
+                  />
+                  {edgeSearchField === 'related' && edgeRelatedSuggestOpen && (
+                    <div className="admin-type-suggestions">
+                      {nodes
+                        .filter((node) => {
+                          const term = edgeSearch.trim().toLowerCase();
+                          if (!term) return true;
+                          return node.name.toLowerCase().includes(term);
+                        })
+                        .map((node) => (
+                          <button
+                            type="button"
+                            key={node.id}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              setEdgeSearch(node.name);
+                              setEdgeRelatedSelectedId(node.id);
+                              setEdgeRelatedSuggestOpen(false);
+                            }}
+                          >
+                            {node.name} ({node.type})
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={addDraftRow}
@@ -2364,6 +2413,18 @@ export default function EdgesAdminPage() {
                       </span>
                     </button>
                   </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setNodeSort((prev) => nextSort(prev, 'edges'))}
+                    >
+                      Edges
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(nodeSort, 'edges')}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               )}
               {sortedNodes.length === 0 && <small>No nodes found.</small>}
@@ -2376,6 +2437,7 @@ export default function EdgesAdminPage() {
                   <div>{node.id}</div>
                   <div>{node.name}</div>
                   <div>{node.type}</div>
+                  <div>{node.edge_count ?? 0}</div>
                 </div>
               ))}
             </div>
