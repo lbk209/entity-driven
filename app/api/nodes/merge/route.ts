@@ -46,11 +46,6 @@ export async function POST(request: Request) {
     ).run(payload.targetId, payload.sourceId);
     db.prepare('DELETE FROM review_entity WHERE node_id = ?').run(payload.sourceId);
 
-    db.prepare('UPDATE entity_aliases SET node_id = ? WHERE node_id = ?').run(
-      payload.targetId,
-      payload.sourceId
-    );
-
     db.prepare(
       `
       INSERT OR IGNORE INTO edges (parent_id, child_id, relation)

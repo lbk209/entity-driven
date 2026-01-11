@@ -35,8 +35,11 @@ type NodeTypePrior = {
 };
 
 type AliasRow = {
+  id: number;
   alias: string;
   node_id: number;
+  review_id: number;
+  review_content?: string | null;
   node_name?: string;
   node_type?: string;
 };
@@ -48,7 +51,6 @@ type DraftEdge = {
   relation: string;
 };
 type DraftNode = { draftId: string; name: string; type: string };
-type DraftAlias = { draftId: string; alias: string; node_id: number | null };
 type DraftEdgeRelation = {
   draftId: string;
   relation: string;
@@ -69,7 +71,7 @@ type EditEdge = Edge & {
   original_child_id: number;
   original_relation: string;
 };
-type EditAlias = AliasRow & { original_alias: string };
+type EditAlias = AliasRow;
 type EditEdgeRelation = {
   relation: string;
   original_relation: string;
@@ -182,7 +184,6 @@ export default function EdgesAdminPage() {
   const [nodeTypePriors, setNodeTypePriors] = useState<NodeTypePrior[]>([]);
   const [drafts, setDrafts] = useState<DraftEdge[]>([]);
   const [nodeDrafts, setNodeDrafts] = useState<DraftNode[]>([]);
-  const [aliasDrafts, setAliasDrafts] = useState<DraftAlias[]>([]);
   const [edgeRelationDrafts, setEdgeRelationDrafts] = useState<DraftEdgeRelation[]>([]);
   const [nodeTypeDrafts, setNodeTypeDrafts] = useState<DraftNodeTypePrior[]>([]);
   const [editNode, setEditNode] = useState<EditNode | null>(null);
@@ -565,21 +566,6 @@ export default function EdgesAdminPage() {
     setStatus('');
   }
 
-  function addAliasDraft() {
-    if (aliasDrafts.length > 0 || editAlias) return;
-    if (nodes.length === 0) {
-      setStatus('Add nodes first so aliases can reference them.');
-      return;
-    }
-    const draft: DraftAlias = {
-      draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      alias: '',
-      node_id: null
-    };
-    setAliasDrafts((prev) => [...prev, draft]);
-    setStatus('');
-  }
-
   function addEdgeRelationDraft() {
     if (edgeRelationDrafts.length > 0 || editEdgeRelation) return;
     const draft: DraftEdgeRelation = {
@@ -636,14 +622,6 @@ export default function EdgesAdminPage() {
 
   function updateNodeDraft(draftId: string, next: Partial<DraftNode>) {
     setNodeDrafts((prev) =>
-      prev.map((draft) =>
-        draft.draftId === draftId ? { ...draft, ...next } : draft
-      )
-    );
-  }
-
-  function updateAliasDraft(draftId: string, next: Partial<DraftAlias>) {
-    setAliasDrafts((prev) =>
       prev.map((draft) =>
         draft.draftId === draftId ? { ...draft, ...next } : draft
       )
@@ -712,40 +690,6 @@ export default function EdgesAdminPage() {
     );
     await loadNodes();
     await loadNodeTypePriors();
-    await loadAliases();
-  }
-
-  async function saveAliasDraft(draft: DraftAlias) {
-    setStatus('');
-    if (!draft.alias.trim()) {
-      setStatus('Alias is required.');
-      return;
-    }
-    if (!draft.node_id) {
-      setStatus('Select a canonical node.');
-      return;
-    }
-    const res = await fetch('/api/aliases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        alias: draft.alias,
-        node_id: draft.node_id
-      })
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      const message = data.error || 'Failed to insert alias.';
-      setStatus(message);
-      return;
-    }
-    setAliasDrafts((prev) =>
-      prev.map((item) =>
-        item.draftId === draft.draftId
-          ? { ...item, alias: '', node_id: null }
-          : item
-      )
-    );
     await loadAliases();
   }
 
@@ -868,9 +812,8 @@ export default function EdgesAdminPage() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        alias: alias.alias,
-        node_id: alias.node_id,
-        original_alias: alias.original_alias
+        id: alias.id,
+        node_id: alias.node_id
       })
     });
     if (!res.ok) {
@@ -1015,10 +958,6 @@ export default function EdgesAdminPage() {
     setNodeDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
   }
 
-  function removeAliasDraft(draftId: string) {
-    setAliasDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
-  }
-
   function removeEdgeRelationDraft(draftId: string) {
     setEdgeRelationDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
   }
@@ -1073,11 +1012,7 @@ export default function EdgesAdminPage() {
   }
 
   function startEditAlias(alias: AliasRow) {
-    if (aliasDrafts.length > 0) return;
-    setEditAlias({
-      ...alias,
-      original_alias: alias.alias
-    });
+    setEditAlias(alias);
   }
 
   function cancelEditAlias() {
@@ -1120,7 +1055,7 @@ export default function EdgesAdminPage() {
     const res = await fetch('/api/aliases', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ alias: alias.alias, node_id: alias.node_id })
+      body: JSON.stringify({ id: alias.id })
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -1496,85 +1431,31 @@ export default function EdgesAdminPage() {
         {activeTab === 'aliases' && (
           <>
             {editAlias ? (
-              <div className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form">
-                <div>
-                  <input
-                    aria-label="Alias"
-                    placeholder="Alias"
-                    value={editAlias.alias}
-                    onChange={(event) =>
-                      updateEditAlias({ alias: event.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <select
-                    aria-label="Canonical node"
-                    value={editAlias.node_id}
-                    onChange={(event) =>
-                      updateEditAlias({
-                        node_id: Number(event.target.value)
-                      })
-                    }
-                  >
-                    {!nodeMap.has(editAlias.node_id) && (
-                      <option value={editAlias.node_id}>
-                        {editAlias.node_id}
-                      </option>
-                    )}
-                    {nodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.name} ({node.type})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="admin-row__actions admin-row__actions--form">
-                  <div className="button-row">
-                    <button type="button" onClick={() => saveEditAlias(editAlias)}>
-                      Update
-                    </button>
-                    <button type="button" onClick={() => deleteAlias(editAlias)}>
-                      Delete
-                    </button>
-                    <button
-                      type="button"
-                      className="button-link button-link--ghost"
-                      onClick={cancelEditAlias}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : aliasDrafts.length > 0 ? (
-              aliasDrafts.map((draft) => (
-                <div
-                  className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form"
-                  key={draft.draftId}
-                >
-                <div>
-                  <input
-                    aria-label="Alias"
-                    placeholder="Alias"
-                    value={draft.alias}
-                    onChange={(event) =>
-                      updateAliasDraft(draft.draftId, { alias: event.target.value })
-                    }
-                  />
-                </div>
+              <>
+                <div className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form">
                   <div>
-                  <select
-                    className={draft.node_id ? '' : 'admin-select--placeholder'}
-                    aria-label="Canonical node"
-                    value={draft.node_id ?? ''}
-                    onChange={(event) =>
-                      updateAliasDraft(draft.draftId, {
-                        node_id: event.target.value ? Number(event.target.value) : null
-                      })
-                    }
-                  >
-                      <option value="">Select node</option>
+                    <input
+                      aria-label="Alias"
+                      placeholder="Alias"
+                      value={editAlias.alias}
+                      readOnly
+                    />
+                  </div>
+                  <div>
+                    <select
+                      aria-label="Canonical node"
+                      value={editAlias.node_id}
+                      onChange={(event) =>
+                        updateEditAlias({
+                          node_id: Number(event.target.value)
+                        })
+                      }
+                    >
+                      {!nodeMap.has(editAlias.node_id) && (
+                        <option value={editAlias.node_id}>
+                          {editAlias.node_id}
+                        </option>
+                      )}
                       {nodes.map((node) => (
                         <option key={node.id} value={node.id}>
                           {node.name} ({node.type})
@@ -1584,20 +1465,33 @@ export default function EdgesAdminPage() {
                   </div>
                   <div className="admin-row__actions admin-row__actions--form">
                     <div className="button-row">
-                      <button type="button" onClick={() => saveAliasDraft(draft)}>
-                        Save
+                      <button type="button" onClick={() => saveEditAlias(editAlias)}>
+                        Update
+                      </button>
+                      <button type="button" onClick={() => deleteAlias(editAlias)}>
+                        Delete
                       </button>
                       <button
                         type="button"
                         className="button-link button-link--ghost"
-                        onClick={() => removeAliasDraft(draft.draftId)}
+                        onClick={cancelEditAlias}
                       >
                         Cancel
                       </button>
                     </div>
                   </div>
                 </div>
-              ))
+                <div className="admin-form">
+                  <textarea
+                    className="admin-textarea--compact"
+                    aria-label="Review content"
+                    placeholder="Review content"
+                    rows={2}
+                    readOnly
+                    value={editAlias.review_content ?? ''}
+                  />
+                </div>
+              </>
             ) : (
               <div className="admin-toolbar">
                 <select
@@ -1616,13 +1510,6 @@ export default function EdgesAdminPage() {
                   value={aliasSearch}
                   onChange={(event) => setAliasSearch(event.target.value)}
                 />
-                <button
-                  type="button"
-                  onClick={addAliasDraft}
-                  disabled={aliasDrafts.length > 0 || !!editAlias}
-                >
-                  Insert alias
-                </button>
               </div>
             )}
           </>
@@ -2318,21 +2205,23 @@ export default function EdgesAdminPage() {
               {filteredAliases.length > 0 && (
                 <div className="row review-footer admin-row admin-row--header admin-row--data-alias">
                   <div>Alias</div>
-                  <div>Canonical node</div>
+                  <div>Node</div>
+                  <div>Review</div>
                 </div>
               )}
               {filteredAliases.length === 0 && <small>No aliases found.</small>}
               {filteredAliases.map((alias) => {
                 const node = nodeMap.get(alias.node_id);
-                const nodeLabel = node ? `${node.name} (${node.type})` : alias.node_id;
+                const nodeLabel = node ? node.name : alias.node_id;
                 return (
                   <div
                     className="row review-footer admin-row admin-row--data admin-row--data-alias admin-row--clickable"
-                    key={alias.alias}
+                    key={alias.id}
                     onClick={() => startEditAlias(alias)}
                   >
                     <div>{alias.alias}</div>
                     <div>{nodeLabel}</div>
+                    <div>{alias.review_id}</div>
                   </div>
                 );
               })}

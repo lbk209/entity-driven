@@ -54,19 +54,6 @@ CREATE TABLE IF NOT EXISTS edges (
   FOREIGN KEY (relation) REFERENCES edge_relations(relation)
 );
 
-CREATE TABLE IF NOT EXISTS entity_aliases (
-  alias TEXT PRIMARY KEY,
-  node_id INTEGER NOT NULL,
-  FOREIGN KEY (node_id) REFERENCES nodes(id)
-);
-
-CREATE TRIGGER IF NOT EXISTS nodes_self_alias
-AFTER INSERT ON nodes
-BEGIN
-  INSERT INTO entity_aliases (alias, node_id)
-  VALUES (NEW.name, NEW.id);
-END;
-
 CREATE TABLE IF NOT EXISTS review_entity (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   review_id INTEGER NOT NULL,
@@ -312,25 +299,8 @@ export function getDb() {
       DROP TABLE review_entity_old;
     `);
   }
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS entity_aliases (
-      alias TEXT PRIMARY KEY,
-      node_id INTEGER NOT NULL,
-      FOREIGN KEY (node_id) REFERENCES nodes(id)
-    );
-  `);
-  db.exec(`
-    CREATE TRIGGER IF NOT EXISTS nodes_self_alias
-    AFTER INSERT ON nodes
-    BEGIN
-      INSERT INTO entity_aliases (alias, node_id)
-      VALUES (NEW.name, NEW.id);
-    END;
-  `);
-  db.exec(`
-    INSERT OR IGNORE INTO entity_aliases (alias, node_id)
-    SELECT name, id FROM nodes;
-  `);
+  db.exec('DROP TRIGGER IF EXISTS nodes_self_alias;');
+  db.exec('DROP TABLE IF EXISTS entity_aliases;');
   db.exec('DROP TABLE IF EXISTS entity;');
   const reviewColumns = db.prepare("PRAGMA table_info('review')").all() as Array<{
     name: string;

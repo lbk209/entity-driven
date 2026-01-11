@@ -44,10 +44,7 @@ export async function POST(request: Request) {
       `
     );
     const insertEntity = db.prepare('INSERT INTO nodes (name, type) VALUES (?, ?)');
-    const selectAlias = db.prepare('SELECT node_id FROM entity_aliases WHERE alias = ?');
-    const insertAlias = db.prepare(
-      'INSERT OR IGNORE INTO entity_aliases (alias, node_id) VALUES (?, ?)'
-    );
+    const selectNode = db.prepare('SELECT id FROM nodes WHERE name = ? AND type = ?');
     const insertLink = db.prepare(
       'INSERT OR IGNORE INTO review_entity (review_id, node_id, alias) VALUES (?, ?, ?)'
     );
@@ -58,19 +55,14 @@ export async function POST(request: Request) {
       if (!alias) continue;
       const normalizedType = entity.type?.trim() || 'default';
       upsertNodeType.run(normalizedType);
-      const aliasRow = selectAlias.get(alias) as { node_id: number } | undefined;
-      let nodeId = aliasRow?.node_id;
+      const nodeRow = selectNode.get(alias, normalizedType) as { id: number } | undefined;
+      let nodeId = nodeRow?.id;
       if (!nodeId) {
         const entityResult = insertEntity.run(alias, normalizedType);
         nodeId = Number(entityResult.lastInsertRowid);
       }
       if (nodeId) {
         insertLink.run(reviewId, nodeId, alias);
-        try {
-          insertAlias.run(alias, nodeId);
-        } catch {
-          // Ignore alias insert issues; review creation should succeed.
-        }
       }
     }
 
@@ -138,10 +130,7 @@ export async function PUT(request: Request) {
       `
     );
     const insertEntity = db.prepare('INSERT INTO nodes (name, type) VALUES (?, ?)');
-    const selectAlias = db.prepare('SELECT node_id FROM entity_aliases WHERE alias = ?');
-    const insertAlias = db.prepare(
-      'INSERT OR IGNORE INTO entity_aliases (alias, node_id) VALUES (?, ?)'
-    );
+    const selectNode = db.prepare('SELECT id FROM nodes WHERE name = ? AND type = ?');
     const insertLink = db.prepare(
       'INSERT OR IGNORE INTO review_entity (review_id, node_id, alias) VALUES (?, ?, ?)'
     );
@@ -152,19 +141,14 @@ export async function PUT(request: Request) {
       if (!alias) continue;
       const normalizedType = entity.type?.trim() || 'default';
       upsertNodeType.run(normalizedType);
-      const aliasRow = selectAlias.get(alias) as { node_id: number } | undefined;
-      let nodeId = aliasRow?.node_id;
+      const nodeRow = selectNode.get(alias, normalizedType) as { id: number } | undefined;
+      let nodeId = nodeRow?.id;
       if (!nodeId) {
         const entityResult = insertEntity.run(alias, normalizedType);
         nodeId = Number(entityResult.lastInsertRowid);
       }
       if (nodeId) {
         insertLink.run(reviewId, nodeId, alias);
-        try {
-          insertAlias.run(alias, nodeId);
-        } catch {
-          // Ignore alias insert issues; review update should succeed.
-        }
       }
     }
   });

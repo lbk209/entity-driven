@@ -29,20 +29,20 @@ export async function GET(request: Request) {
   }> = [];
 
   if (terms.length > 0) {
-    const whereClause = terms.map(() => 'LOWER(alias) LIKE ?').join(' OR ');
+    const whereClause = terms.map(() => 'LOWER(re.alias) LIKE ?').join(' OR ');
     const params = terms.map((term) => `%${term}%`);
-    const nodeRows = db
+    const reviewRows = db
       .prepare(
         `
-        SELECT DISTINCT node_id
-        FROM entity_aliases
+        SELECT DISTINCT re.review_id
+        FROM review_entity re
         WHERE ${whereClause}
       `
       )
-      .all(...params) as Array<{ node_id: number }>;
-    const nodeIds = nodeRows.map((row) => row.node_id);
-    if (nodeIds.length > 0) {
-      const nodePlaceholders = nodeIds.map(() => '?').join(',');
+      .all(...params) as Array<{ review_id: number }>;
+    const reviewIds = reviewRows.map((row) => row.review_id);
+    if (reviewIds.length > 0) {
+      const reviewPlaceholders = reviewIds.map(() => '?').join(',');
       const userClause = userFilter ? 'AND u.user_id = ?' : '';
       rows = db
         .prepare(
@@ -53,16 +53,16 @@ export async function GET(request: Request) {
           JOIN user u ON u.id = r.user_id
           LEFT JOIN review_entity re ON r.id = re.review_id
           WHERE r.id IN (
-            SELECT re2.review_id
-            FROM review_entity re2
-            WHERE re2.node_id IN (${nodePlaceholders})
+            SELECT review_id
+            FROM review_entity
+            WHERE review_id IN (${reviewPlaceholders})
           )
           ${userClause}
           GROUP BY r.id
           ORDER BY COALESCE(r.updated_at, r.created_at) DESC
         `
         )
-        .all(...nodeIds, ...(userFilter ? [userFilter] : []));
+        .all(...reviewIds, ...(userFilter ? [userFilter] : []));
     }
   } else {
     const userClause = userFilter ? 'WHERE u.user_id = ?' : '';

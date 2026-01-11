@@ -62,16 +62,16 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Sentiment display gated by `REVIEW_SENTIMENT_CONFIDENCE_MIN` env var on the reviews API.
 - Entity picker uses inline chips, autocomplete suggestions, and a collapse toggle.
 - Review details show entity badges before content with an edit action.
-- Schema now uses canonical `nodes`, `entity_aliases`, and `review_entity.alias`.
+- Schema now uses canonical `nodes` and `review_entity.alias`.
 - `review_entity` now has its own `id` primary key with `review_id` + `node_id` unique.
 - `review_entity_sentiment` stores raw sentiment analysis outputs per review entity.
-- Search/filter resolves via `entity_aliases` and filters on `review_entity.node_id` only.
+- Search/filter resolves via `review_entity.alias`.
 - Admin page for nodes/edges/aliases management at `/admin` with merge workflow.
 - Review edit supports delete with user/password confirmation.
 - Notebook for data review: `review_app_sqlite.ipynb`.
 - Admin page behavior: tabs for nodes/edges/aliases are a minimal underline style, tabs + active form/search live in a fixed header, edit/insert forms replace the search/insert row, list rows scroll/snap in their own panel, delete requires confirm (stronger if referenced), edit can switch by clicking another row, rows truncate long values for alignment, and edge list columns now keep parent/child widths consistent.
 - Admin nodes: search filter supports field selection; insert forms keep open after save; draft selects show gray placeholder text; edit cancel buttons are last in row; node type inputs use inline suggestions populated from existing types.
-- Admin aliases: search filter supports alias/node selection; insert forms keep open after save; draft node select uses a placeholder.
+- Admin aliases: search filter supports alias/node selection; edit row shows read-only review content beneath the controls.
 - Admin edges: search filter supports parent/child/relation selection plus related traversal; related traversal only follows same-relation, transitive paths for indirect edges; insert forms keep open after save; draft parent/child/relation selects use placeholders.
 - Edge relations include allowed parent/child node type lists stored as JSON strings and a `description` field; edge inserts/updates validate parent/child node types against these lists.
 - Admin Reference tab uses radio buttons to switch between edge relations and node type priors views; relation list wraps parent/child types and vertically centers row text; relation edit row supports multi-select type pickers and shows the relation description in a compact textarea below the form row.
@@ -119,19 +119,6 @@ CREATE TABLE IF NOT EXISTS nodes (
   FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
 );
 
-CREATE TABLE IF NOT EXISTS entity_aliases (
-  alias TEXT PRIMARY KEY,
-  node_id INTEGER NOT NULL,
-  FOREIGN KEY (node_id) REFERENCES nodes(id)
-);
-
-CREATE TRIGGER IF NOT EXISTS nodes_self_alias
-AFTER INSERT ON nodes
-BEGIN
-  INSERT INTO entity_aliases (alias, node_id)
-  VALUES (NEW.name, NEW.id);
-END;
-
 CREATE TABLE IF NOT EXISTS edges (
   parent_id INTEGER NOT NULL,
   child_id INTEGER NOT NULL,
@@ -167,11 +154,11 @@ CREATE TABLE IF NOT EXISTS review_entity_sentiment (
 ## Quick Context (No File Reads Needed)
 
 - Admin UI path: `/admin`
-- Tables: `user`, `review`, `nodes`, `entity_aliases`, `edges`, `review_entity`, `review_entity_sentiment`
+- Tables: `user`, `review`, `nodes`, `edges`, `review_entity`, `review_entity_sentiment`
 - Sentiment storage is raw-only; labels are computed at read time for UI.
-- Nodes/edges/aliases use the same inline form layout as insert, with Update/Cancel/Delete
+- Nodes/edges/aliases use the same inline form layout as insert, with Update/Cancel/Delete (aliases are sourced from reviews)
 - Delete confirmation always appears; if referenced by reviews/edges/aliases, message is stronger
-- Merge nodes reassigns aliases, reviews, and edges in a single transaction
+- Merge nodes reassigns reviews and edges in a single transaction
 - Clicking a different row replaces the current edit form
 
 ## Next Ideas

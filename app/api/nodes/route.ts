@@ -82,13 +82,10 @@ export async function POST(request: Request) {
         `
         )
         .run(payload.type);
-      const result = db
-        .prepare('INSERT INTO nodes (name, type) VALUES (?, ?)')
-        .run(payload.name, payload.type);
-      const nodeId = Number(result.lastInsertRowid);
-      db
-        .prepare('INSERT OR IGNORE INTO entity_aliases (alias, node_id) VALUES (?, ?)')
-        .run(payload.name, nodeId);
+      db.prepare('INSERT INTO nodes (name, type) VALUES (?, ?)').run(
+        payload.name,
+        payload.type
+      );
     });
     tx();
   } catch (error) {
@@ -133,9 +130,6 @@ export async function PUT(request: Request) {
         .prepare('UPDATE review_entity SET node_id = ? WHERE node_id = ?')
         .run(payload.id, payload.originalId);
       db
-        .prepare('UPDATE entity_aliases SET node_id = ? WHERE node_id = ?')
-        .run(payload.id, payload.originalId);
-      db
         .prepare('UPDATE edges SET parent_id = ? WHERE parent_id = ?')
         .run(payload.id, payload.originalId);
       db
@@ -173,22 +167,12 @@ export async function DELETE(request: Request) {
         `
         SELECT
           (SELECT COUNT(*) FROM review_entity re WHERE re.node_id = ?) AS review_count,
-          (SELECT COUNT(*) FROM edges e WHERE e.parent_id = ? OR e.child_id = ?) AS edge_count,
-          (SELECT COUNT(*) FROM entity_aliases ea WHERE ea.node_id = ?) AS alias_count
+          (SELECT COUNT(*) FROM edges e WHERE e.parent_id = ? OR e.child_id = ?) AS edge_count
       `
       )
-      .get(payload.id, payload.id, payload.id, payload.id) as
-      | { review_count: number; edge_count: number; alias_count: number }
+      .get(payload.id, payload.id, payload.id) as
+      | { review_count: number; edge_count: number }
       | undefined;
-    if (row && row.alias_count > 0) {
-      return NextResponse.json(
-        {
-          error: 'node has aliases; reassign or remove aliases before deleting',
-          alias_count: row.alias_count
-        },
-        { status: 409 }
-      );
-    }
     if (row && (row.review_count > 0 || row.edge_count > 0)) {
       return NextResponse.json(
         {

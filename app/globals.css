@@ -222,6 +222,10 @@ textarea {
   font-size: 13px;
 }
 
+.admin-row--form-alias + .admin-form .admin-textarea--compact {
+  color: #6f6f6f;
+}
+
 .row {
   display: grid;
   gap: 12px;
@@ -342,7 +346,7 @@ textarea {
 }
 
 .admin-row--data-alias {
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(180px, 2fr) minmax(180px, 2fr) minmax(100px, 1fr);
 }
 
 .admin-row--data-relation {

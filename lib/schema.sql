@@ -47,19 +47,6 @@ CREATE TABLE IF NOT EXISTS edges (
   FOREIGN KEY (relation) REFERENCES edge_relations(relation)
 );
 
-CREATE TABLE IF NOT EXISTS entity_aliases (
-  alias TEXT PRIMARY KEY,
-  node_id INTEGER NOT NULL,
-  FOREIGN KEY (node_id) REFERENCES nodes(id)
-);
-
-CREATE TRIGGER IF NOT EXISTS nodes_self_alias
-AFTER INSERT ON nodes
-BEGIN
-  INSERT INTO entity_aliases (alias, node_id)
-  VALUES (NEW.name, NEW.id);
-END;
-
 CREATE TABLE IF NOT EXISTS review_entity (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   review_id INTEGER NOT NULL,
