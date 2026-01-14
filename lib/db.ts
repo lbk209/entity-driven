@@ -15,31 +15,36 @@ CREATE TABLE IF NOT EXISTS review (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   content TEXT NOT NULL,
+  node_id INTEGER,
+  entity_name TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT,
-  FOREIGN KEY (user_id) REFERENCES user(id)
+  FOREIGN KEY (user_id) REFERENCES user(id),
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
 );
 
-CREATE TABLE IF NOT EXISTS node_type_prior (
+CREATE TABLE IF NOT EXISTS node_type (
   node_type TEXT PRIMARY KEY,
-  base_prior REAL,
-  description TEXT,
-  updated_at TEXT
+  description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
+  description TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT,
+  updated_at TEXT,
   UNIQUE(name, type),
-  FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
+  FOREIGN KEY (type) REFERENCES node_type(node_type)
 );
 
 CREATE TABLE IF NOT EXISTS edge_relations (
   relation TEXT PRIMARY KEY,
-  is_transitive INTEGER,
-  default_weight REAL,
   description TEXT,
+  ui_priority INTEGER,
+  max_suggestions INTEGER,
   allowed_parent_types TEXT NOT NULL,
   allowed_child_types TEXT NOT NULL
 );
@@ -54,26 +59,17 @@ CREATE TABLE IF NOT EXISTS edges (
   FOREIGN KEY (relation) REFERENCES edge_relations(relation)
 );
 
-CREATE TABLE IF NOT EXISTS review_entity (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS review_sentiment (
   review_id INTEGER NOT NULL,
-  node_id INTEGER NOT NULL,
-  alias TEXT NOT NULL,
-  UNIQUE(review_id, node_id),
-  FOREIGN KEY (review_id) REFERENCES review(id),
-  FOREIGN KEY (node_id) REFERENCES nodes(id)
-);
-
-CREATE TABLE IF NOT EXISTS review_entity_sentiment (
-  review_entity_id INTEGER NOT NULL,
   sentiment_raw REAL NOT NULL,
   confidence REAL NOT NULL,
   method TEXT NOT NULL,
   version TEXT,
   created_at TEXT,
-  PRIMARY KEY (review_entity_id, method, version),
-  FOREIGN KEY (review_entity_id) REFERENCES review_entity(id)
+  PRIMARY KEY (review_id, method, version),
+  FOREIGN KEY (review_id) REFERENCES review(id)
 );
+
 `;
 
 function hasForeignKey(
@@ -100,33 +96,42 @@ export function getDb() {
   db = new Database(dbPath);
   db.pragma('foreign_keys = ON');
   db.exec(schemaSql);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS node_type_prior (
-      node_type TEXT PRIMARY KEY,
-      base_prior REAL,
-      description TEXT,
-      updated_at TEXT
-    );
-  `);
-  const nodeTypePriorColumns = db
-    .prepare("PRAGMA table_info('node_type_prior')")
-    .all() as Array<{ name: string }>;
-  const hasNodeTypeDescription = nodeTypePriorColumns.some(
-    (column) => column.name === 'description'
-  );
-  if (!hasNodeTypeDescription) {
-    db.exec("ALTER TABLE node_type_prior ADD COLUMN description TEXT;");
+  const hasNodeTypePrior = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='node_type_prior'")
+    .get() as { name?: string } | undefined;
+  const hasNodeType = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='node_type'")
+    .get() as { name?: string } | undefined;
+  if (hasNodeTypePrior?.name) {
+    if (!hasNodeType?.name) {
+      db.exec('ALTER TABLE node_type_prior RENAME TO node_type;');
+    } else {
+      db.exec(`
+        INSERT OR IGNORE INTO node_type (node_type, description)
+        SELECT node_type, description FROM node_type_prior;
+        DROP TABLE node_type_prior;
+      `);
+    }
   }
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS edge_relations (
-      relation TEXT PRIMARY KEY,
-      is_transitive INTEGER,
-      default_weight REAL,
-      description TEXT,
-      allowed_parent_types TEXT NOT NULL,
-      allowed_child_types TEXT NOT NULL
-    );
-  `);
+  const nodeTypeColumns = db
+    .prepare("PRAGMA table_info('node_type')")
+    .all() as Array<{ name: string }>;
+  const nodeTypeHasBasePrior = nodeTypeColumns.some((column) => column.name === 'base_prior');
+  const nodeTypeHasUpdatedAt = nodeTypeColumns.some((column) => column.name === 'updated_at');
+  if (nodeTypeHasBasePrior || nodeTypeHasUpdatedAt) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`
+      ALTER TABLE node_type RENAME TO node_type_old;
+      CREATE TABLE node_type (
+        node_type TEXT PRIMARY KEY,
+        description TEXT
+      );
+      INSERT INTO node_type (node_type, description)
+      SELECT node_type, description FROM node_type_old;
+      DROP TABLE node_type_old;
+    `);
+    db.exec('PRAGMA foreign_keys = ON');
+  }
   const edgeRelationColumns = db
     .prepare("PRAGMA table_info('edge_relations')")
     .all() as Array<{ name: string }>;
@@ -139,30 +144,128 @@ export function getDb() {
   const hasDescription = edgeRelationColumns.some(
     (column) => column.name === 'description'
   );
-  if (!hasAllowedParentTypes) {
-    db.exec(
-      "ALTER TABLE edge_relations ADD COLUMN allowed_parent_types TEXT NOT NULL DEFAULT '[]';"
-    );
-  }
-  if (!hasAllowedChildTypes) {
-    db.exec(
-      "ALTER TABLE edge_relations ADD COLUMN allowed_child_types TEXT NOT NULL DEFAULT '[]';"
-    );
-  }
-  if (!hasDescription) {
-    db.exec("ALTER TABLE edge_relations ADD COLUMN description TEXT;");
+  const hasUiPriority = edgeRelationColumns.some((column) => column.name === 'ui_priority');
+  const hasMaxSuggestions = edgeRelationColumns.some((column) => column.name === 'max_suggestions');
+  const hasLegacyTransitive = edgeRelationColumns.some(
+    (column) => column.name === 'is_transitive'
+  );
+  const hasLegacyWeight = edgeRelationColumns.some(
+    (column) => column.name === 'default_weight'
+  );
+  const shouldRebuildEdgeRelations =
+    hasLegacyTransitive ||
+    hasLegacyWeight ||
+    !hasUiPriority ||
+    !hasMaxSuggestions ||
+    !hasAllowedParentTypes ||
+    !hasAllowedChildTypes ||
+    !hasDescription;
+  if (shouldRebuildEdgeRelations) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`
+      ALTER TABLE edge_relations RENAME TO edge_relations_old;
+      CREATE TABLE edge_relations (
+        relation TEXT PRIMARY KEY,
+        description TEXT,
+        ui_priority INTEGER,
+        max_suggestions INTEGER,
+        allowed_parent_types TEXT NOT NULL,
+        allowed_child_types TEXT NOT NULL
+      );
+      INSERT INTO edge_relations (
+        relation,
+        description,
+        ui_priority,
+        max_suggestions,
+        allowed_parent_types,
+        allowed_child_types
+      )
+      SELECT
+        relation,
+        description,
+        NULL,
+        NULL,
+        COALESCE(allowed_parent_types, '[]'),
+        COALESCE(allowed_child_types, '[]')
+      FROM edge_relations_old;
+      DROP TABLE edge_relations_old;
+    `);
+    db.exec('PRAGMA foreign_keys = ON');
   }
   const hasNodes = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'")
     .get() as { name?: string } | undefined;
-  if (!hasNodes?.name) {
+  if (hasNodes?.name) {
+    const nodeColumns = db
+      .prepare("PRAGMA table_info('nodes')")
+      .all() as Array<{ name: string }>;
+    const nodeHasDescription = nodeColumns.some((column) => column.name === 'description');
+    const nodeHasIsActive = nodeColumns.some((column) => column.name === 'is_active');
+    const nodeHasCreatedAt = nodeColumns.some((column) => column.name === 'created_at');
+    const nodeHasUpdatedAt = nodeColumns.some((column) => column.name === 'updated_at');
+    const needsNodeTypeFk = !hasForeignKey(db, 'nodes', 'type', 'node_type', 'node_type');
+    if (needsNodeTypeFk) {
+      db.exec('PRAGMA foreign_keys = OFF');
+      db.exec(`
+        ALTER TABLE nodes RENAME TO nodes_old;
+        CREATE TABLE nodes (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          description TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT,
+          updated_at TEXT,
+          UNIQUE(name, type),
+          FOREIGN KEY (type) REFERENCES node_type(node_type)
+        );
+        INSERT INTO nodes (
+          id,
+          name,
+          type,
+          description,
+          is_active,
+          created_at,
+          updated_at
+        )
+        SELECT
+          id,
+          name,
+          type,
+          ${nodeHasDescription ? 'description' : 'NULL'},
+          ${nodeHasIsActive ? 'is_active' : '1'},
+          ${nodeHasCreatedAt ? 'created_at' : "datetime('now')"},
+          ${nodeHasUpdatedAt ? 'updated_at' : "datetime('now')"}
+        FROM nodes_old;
+        DROP TABLE nodes_old;
+      `);
+      db.exec('PRAGMA foreign_keys = ON');
+    } else {
+      if (!nodeHasDescription) {
+        db.exec('ALTER TABLE nodes ADD COLUMN description TEXT;');
+      }
+      if (!nodeHasIsActive) {
+        db.exec('ALTER TABLE nodes ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;');
+      }
+      if (!nodeHasCreatedAt) {
+        db.exec('ALTER TABLE nodes ADD COLUMN created_at TEXT;');
+      }
+      if (!nodeHasUpdatedAt) {
+        db.exec('ALTER TABLE nodes ADD COLUMN updated_at TEXT;');
+      }
+    }
+  } else {
     db.exec(`
       CREATE TABLE IF NOT EXISTS nodes (
         id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         type TEXT NOT NULL,
+        description TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT,
+        updated_at TEXT,
         UNIQUE(name, type),
-        FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
+        FOREIGN KEY (type) REFERENCES node_type(node_type)
       );
     `);
   }
@@ -183,15 +286,15 @@ export function getDb() {
     `);
   }
   db.exec(`
-    INSERT OR IGNORE INTO node_type_prior (node_type, base_prior, updated_at)
-    SELECT DISTINCT type, 0, datetime('now') FROM nodes;
+    INSERT OR IGNORE INTO node_type (node_type, description)
+    SELECT DISTINCT type, NULL FROM nodes;
   `);
   const allowedTypes = db
     .prepare(
       `
       SELECT DISTINCT type AS value FROM nodes
       UNION
-      SELECT DISTINCT node_type AS value FROM node_type_prior
+      SELECT DISTINCT node_type AS value FROM node_type
     `
     )
     .all() as Array<{ value: string }>;
@@ -205,13 +308,13 @@ export function getDb() {
       `
       INSERT OR IGNORE INTO edge_relations (
         relation,
-        is_transitive,
-        default_weight,
         description,
+        ui_priority,
+        max_suggestions,
         allowed_parent_types,
         allowed_child_types
       )
-      SELECT DISTINCT relation, 0, 1, NULL, ?, ? FROM edges;
+      SELECT DISTINCT relation, NULL, NULL, NULL, ?, ? FROM edges;
     `
     )
     .run(allowedTypesJson, allowedTypesJson);
@@ -228,15 +331,15 @@ export function getDb() {
   }
   const relationDescriptions: Record<string, string> = {
     contains:
-      'Indicates structural, spatial, or conceptual inclusion where one entity fully contains another. The relation is transitive.',
+      'Indicates structural, spatial, or conceptual inclusion where one entity fully contains another.',
     sells:
-      'Indicates a direct sales relationship where a vendor, restaurant, or venue sells a specific product or menu item. This relation is not transitive.',
+      'Indicates a direct sales relationship where a vendor, restaurant, or venue sells a specific product or menu item.',
     operates:
       'Indicates that a brand operates or manages a specific vendor, restaurant, or venue. This does not imply direct sales by the brand itself.',
     produces:
       'Indicates that a brand manufactures or creates a product or menu item, independent of where it is sold.',
     located_in:
-      'Indicates the physical location of an entity within a geographic area. The relation is transitive across locations.'
+      'Indicates the physical location of an entity within a geographic area.'
   };
   for (const [relation, description] of Object.entries(relationDescriptions)) {
     db
@@ -271,44 +374,155 @@ export function getDb() {
     `);
     db.exec('PRAGMA foreign_keys = ON');
   }
-  const reviewEntityColumns = db
-    .prepare("PRAGMA table_info('review_entity')")
-    .all() as Array<{ name: string }>;
-  const reviewEntityHasNodeId = reviewEntityColumns.some((column) => column.name === 'node_id');
-  const reviewEntityHasAlias = reviewEntityColumns.some((column) => column.name === 'alias');
-  const reviewEntityHasEntityId = reviewEntityColumns.some((column) => column.name === 'entity_id');
-  const reviewEntityHasId = reviewEntityColumns.some((column) => column.name === 'id');
-  if (!reviewEntityHasNodeId || !reviewEntityHasAlias || !reviewEntityHasId) {
-    const linkColumn = reviewEntityHasEntityId && !reviewEntityHasNodeId ? 'entity_id' : 'node_id';
-    const aliasSelect = reviewEntityHasAlias ? 're.alias' : 'NULL';
-    db.exec(`
-      ALTER TABLE review_entity RENAME TO review_entity_old;
-      CREATE TABLE review_entity (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        review_id INTEGER NOT NULL,
-        node_id INTEGER NOT NULL,
-        alias TEXT NOT NULL,
-        UNIQUE(review_id, node_id),
-        FOREIGN KEY (review_id) REFERENCES review(id),
-        FOREIGN KEY (node_id) REFERENCES nodes(id)
-      );
-      INSERT OR IGNORE INTO review_entity (review_id, node_id, alias)
-      SELECT re.review_id, re.${linkColumn}, COALESCE(${aliasSelect}, n.name, '') AS alias
-      FROM review_entity_old re
-      LEFT JOIN nodes n ON n.id = re.${linkColumn};
-      DROP TABLE review_entity_old;
-    `);
-  }
+  const reviewEntityExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='review_entity'")
+    .get() as { name?: string } | undefined;
+  const reviewEntitySentimentExists = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='review_entity_sentiment'"
+    )
+    .get() as { name?: string } | undefined;
+  const reviewSentimentExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='review_sentiment'")
+    .get() as { name?: string } | undefined;
   db.exec('DROP TRIGGER IF EXISTS nodes_self_alias;');
   db.exec('DROP TABLE IF EXISTS entity_aliases;');
   db.exec('DROP TABLE IF EXISTS entity;');
   const reviewColumns = db.prepare("PRAGMA table_info('review')").all() as Array<{
     name: string;
   }>;
+  const reviewHasEntityName = reviewColumns.some((column) => column.name === 'entity_name');
+  const reviewHasNodeId = reviewColumns.some((column) => column.name === 'node_id');
   const hasUpdatedAt = reviewColumns.some((column) => column.name === 'updated_at');
-  if (!hasUpdatedAt) {
-    db.exec('ALTER TABLE review ADD COLUMN updated_at TEXT');
+  const needsReviewRebuild =
+    !reviewHasEntityName ||
+    !reviewHasNodeId ||
+    !hasForeignKey(db, 'review', 'node_id', 'nodes', 'id');
+  if (needsReviewRebuild) {
+    const reviewEntityNameExpr = reviewHasEntityName
+      ? "COALESCE(r.entity_name, re.alias, '')"
+      : "COALESCE(re.alias, '')";
+    const reviewNodeIdExpr = reviewHasNodeId ? 'r.node_id' : 're.node_id';
+    const reviewEntityJoin = reviewEntityExists?.name
+      ? 'LEFT JOIN review_entity re ON r.id = re.review_id'
+      : '';
+    const reviewEntityNameValue = reviewEntityExists?.name
+      ? reviewEntityNameExpr
+      : reviewHasEntityName
+        ? 'r.entity_name'
+        : "''";
+    const reviewNodeIdValue = reviewEntityExists?.name
+      ? reviewNodeIdExpr
+      : reviewHasNodeId
+        ? 'r.node_id'
+        : 'NULL';
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`
+      ALTER TABLE review RENAME TO review_old;
+      CREATE TABLE review (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        node_id INTEGER,
+        entity_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT,
+        FOREIGN KEY (user_id) REFERENCES user(id),
+        FOREIGN KEY (node_id) REFERENCES nodes(id)
+      );
+      INSERT INTO review (id, user_id, content, node_id, entity_name, created_at, updated_at)
+      SELECT
+        r.id,
+        r.user_id,
+        r.content,
+        ${reviewNodeIdValue},
+        ${reviewEntityNameValue},
+        r.created_at,
+        r.updated_at
+      FROM review_old r
+      ${reviewEntityJoin};
+      DROP TABLE review_old;
+    `);
+    db.exec('PRAGMA foreign_keys = ON');
+  } else {
+    if (!hasUpdatedAt) {
+      db.exec('ALTER TABLE review ADD COLUMN updated_at TEXT');
+    }
+    if (reviewEntityExists?.name) {
+      db.exec(`
+        UPDATE review
+        SET node_id = COALESCE(
+              node_id,
+              (SELECT node_id FROM review_entity re WHERE re.review_id = review.id)
+            ),
+            entity_name = CASE
+              WHEN entity_name IS NULL OR entity_name = ''
+                THEN COALESCE(
+                  (SELECT alias FROM review_entity re WHERE re.review_id = review.id),
+                  entity_name,
+                  ''
+                )
+              ELSE entity_name
+            END
+        WHERE EXISTS (SELECT 1 FROM review_entity re WHERE re.review_id = review.id);
+      `);
+    }
   }
+  const migrateReviewSentiment = (sourceTable: 'review_entity_sentiment' | 'review_sentiment') => {
+    if (!reviewEntityExists?.name) {
+      throw new Error('review_entity missing for sentiment migration');
+    }
+    const sourceTableName = sourceTable === 'review_sentiment' ? 'review_sentiment_old' : sourceTable;
+    if (sourceTable === 'review_sentiment') {
+      db.exec('ALTER TABLE review_sentiment RENAME TO review_sentiment_old;');
+    } else {
+      db.exec('ALTER TABLE review_entity_sentiment RENAME TO review_sentiment_old;');
+    }
+    db.exec(`
+      CREATE TABLE review_sentiment (
+        review_id INTEGER NOT NULL,
+        sentiment_raw REAL NOT NULL,
+        confidence REAL NOT NULL,
+        method TEXT NOT NULL,
+        version TEXT,
+        created_at TEXT,
+        PRIMARY KEY (review_id, method, version),
+        FOREIGN KEY (review_id) REFERENCES review(id)
+      );
+      INSERT INTO review_sentiment (
+        review_id,
+        sentiment_raw,
+        confidence,
+        method,
+        version,
+        created_at
+      )
+      SELECT
+        re.review_id,
+        res.sentiment_raw,
+        res.confidence,
+        res.method,
+        res.version,
+        res.created_at
+      FROM ${sourceTableName} res
+      JOIN review_entity re ON re.id = res.review_entity_id;
+      DROP TABLE ${sourceTableName};
+    `);
+  };
+  if (reviewEntitySentimentExists?.name) {
+    migrateReviewSentiment('review_entity_sentiment');
+  } else if (reviewSentimentExists?.name) {
+    const reviewSentimentColumns = db
+      .prepare("PRAGMA table_info('review_sentiment')")
+      .all() as Array<{ name: string }>;
+    const reviewSentimentHasReviewEntityId = reviewSentimentColumns.some(
+      (column) => column.name === 'review_entity_id'
+    );
+    if (reviewSentimentHasReviewEntityId) {
+      migrateReviewSentiment('review_sentiment');
+    }
+  }
+  db.exec('DROP TABLE IF EXISTS review_entity;');
   return db;
 }
 

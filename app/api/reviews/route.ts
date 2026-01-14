@@ -25,57 +25,36 @@ export async function GET(request: Request) {
     content: string;
     created_at: string;
     updated_at: string | null;
-    entities: string | null;
+    entity_name: string;
   }> = [];
 
   if (terms.length > 0) {
-    const whereClause = terms.map(() => 'LOWER(re.alias) LIKE ?').join(' OR ');
+    const whereClause = terms.map(() => 'LOWER(r.entity_name) LIKE ?').join(' OR ');
     const params = terms.map((term) => `%${term}%`);
-    const reviewRows = db
+    const userClause = userFilter ? 'AND u.user_id = ?' : '';
+    rows = db
       .prepare(
         `
-        SELECT DISTINCT re.review_id
-        FROM review_entity re
-        WHERE ${whereClause}
+        SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
+               r.entity_name
+        FROM review r
+        JOIN user u ON u.id = r.user_id
+        WHERE (${whereClause})
+        ${userClause}
+        ORDER BY COALESCE(r.updated_at, r.created_at) DESC
       `
       )
-      .all(...params) as Array<{ review_id: number }>;
-    const reviewIds = reviewRows.map((row) => row.review_id);
-    if (reviewIds.length > 0) {
-      const reviewPlaceholders = reviewIds.map(() => '?').join(',');
-      const userClause = userFilter ? 'AND u.user_id = ?' : '';
-      rows = db
-        .prepare(
-          `
-          SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-                 GROUP_CONCAT(re.alias, ',') AS entities
-          FROM review r
-          JOIN user u ON u.id = r.user_id
-          LEFT JOIN review_entity re ON r.id = re.review_id
-          WHERE r.id IN (
-            SELECT review_id
-            FROM review_entity
-            WHERE review_id IN (${reviewPlaceholders})
-          )
-          ${userClause}
-          GROUP BY r.id
-          ORDER BY COALESCE(r.updated_at, r.created_at) DESC
-        `
-        )
-        .all(...reviewIds, ...(userFilter ? [userFilter] : []));
-    }
+      .all(...params, ...(userFilter ? [userFilter] : []));
   } else {
     const userClause = userFilter ? 'WHERE u.user_id = ?' : '';
     rows = db
       .prepare(
         `
         SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               GROUP_CONCAT(re.alias, ',') AS entities
+               r.entity_name
         FROM review r
         JOIN user u ON u.id = r.user_id
-        LEFT JOIN review_entity re ON r.id = re.review_id
         ${userClause}
-        GROUP BY r.id
         ORDER BY COALESCE(r.updated_at, r.created_at) DESC
       `
       )
@@ -88,7 +67,7 @@ export async function GET(request: Request) {
     created_at: string;
     updated_at: string | null;
     preview: string;
-    entities: string[];
+    entity_name: string;
     sentiment?: 'positive' | 'negative';
   }> = rows.map((row) => ({
     id: row.id,
@@ -96,13 +75,11 @@ export async function GET(request: Request) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     preview: previewText(row.content),
-    entities: row.entities ? row.entities.split(',') : []
+    entity_name: row.entity_name
   }));
 
   const hasSentimentTable = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='review_entity_sentiment'"
-    )
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='review_sentiment'")
     .get();
 
   if (hasSentimentTable && reviews.length > 0) {
@@ -111,14 +88,13 @@ export async function GET(request: Request) {
     const sentimentRows = db
       .prepare(
         `
-        SELECT re.review_id,
-               res.sentiment_raw,
-               res.confidence,
-               res.created_at
-        FROM review_entity_sentiment res
-        JOIN review_entity re ON re.id = res.review_entity_id
-        WHERE re.review_id IN (${placeholders})
-        ORDER BY COALESCE(res.created_at, '') DESC, res.rowid DESC
+        SELECT review_id,
+               sentiment_raw,
+               confidence,
+               created_at
+        FROM review_sentiment
+        WHERE review_id IN (${placeholders})
+        ORDER BY COALESCE(created_at, '') DESC, rowid DESC
       `
       )
       .all(...reviewIds) as Array<{

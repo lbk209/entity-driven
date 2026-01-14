@@ -227,6 +227,13 @@ textarea {
   font-size: 13px;
 }
 
+.admin-input--readonly,
+.admin-textarea--readonly,
+.admin-select--readonly {
+  color: #8a8a8a;
+  background: #f6f6f2;
+}
+
 .admin-row--form-alias + .admin-form .admin-textarea--compact {
   color: #6f6f6f;
 }
@@ -334,12 +341,16 @@ textarea {
   grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.45fr) auto;
 }
 
+.admin-row--form-review {
+  grid-template-columns: minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(80px, 0.7fr) minmax(100px, 0.9fr) auto;
+}
+
 .admin-form {
   margin-top: 0;
 }
 
 .admin-row--data {
-  grid-template-columns: 100px minmax(220px, 1fr) minmax(180px, 1fr) 100px;
+  grid-template-columns: 90px minmax(220px, 1fr) minmax(180px, 1fr) 90px 90px;
 }
 
 .admin-row--deemphasized {
@@ -369,6 +380,10 @@ textarea {
   grid-template-columns: minmax(220px, 1fr) 120px minmax(160px, 1fr);
 }
 
+.admin-row--data-review {
+  grid-template-columns: minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(140px, 0.7fr) minmax(180px, 0.9fr);
+}
+
 .admin-row--data > div {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -395,6 +410,41 @@ textarea {
 
 .admin-subsection-title--spaced {
   margin-top: 20px;
+}
+
+.admin-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 12, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 60;
+}
+
+.admin-dialog {
+  width: min(520px, 100%);
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+}
+
+.admin-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.admin-dialog p {
+  margin: 0 0 16px;
+  color: #333;
+  font-size: 14px;
+}
+
+.admin-dialog .button-row {
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .admin-checkbox label {
@@ -489,6 +539,14 @@ textarea {
 .admin-toolbar button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.admin-dialog button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #e2e2e2;
+  border-color: #d4d4d4;
+  color: #6f6f6f;
 }
 .list {
   list-style: none;

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getDb } from '@/lib/db';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 type ReviewDetail = {
   id: number;
@@ -10,7 +11,7 @@ type ReviewDetail = {
   content: string;
   created_at: string;
   updated_at: string | null;
-  entities: string[];
+  entity_name: string;
 };
 
 function getReview(id: number): ReviewDetail | null {
@@ -19,11 +20,9 @@ function getReview(id: number): ReviewDetail | null {
     .prepare(
       `
       SELECT r.id, r.user_id, r.content, r.created_at, r.updated_at,
-             GROUP_CONCAT(re.alias, ',') AS entities
+             r.entity_name
       FROM review r
-      LEFT JOIN review_entity re ON r.id = re.review_id
       WHERE r.id = ?
-      GROUP BY r.id
     `
     )
     .get(id) as
@@ -33,7 +32,7 @@ function getReview(id: number): ReviewDetail | null {
         content: string;
         created_at: string;
         updated_at: string | null;
-        entities: string | null;
+        entity_name: string;
       }
     | undefined;
 
@@ -45,7 +44,7 @@ function getReview(id: number): ReviewDetail | null {
     content: row.content,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    entities: row.entities ? row.entities.split(',') : []
+    entity_name: row.entity_name
   };
 }
 
@@ -82,9 +81,7 @@ export default function ReviewDetailPage({ params }: { params: { id: string } })
 
       <section className="section">
         <div className="entity-row">
-          {review.entities.map((name) => (
-            <span className="badge" key={name}>{name}</span>
-          ))}
+          <span className="badge">{review.entity_name}</span>
         </div>
         <div className="review-content">{review.content}</div>
       </section>

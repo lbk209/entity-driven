@@ -7,26 +7,18 @@ function parseNodeTypePayload(body: unknown) {
   if (!body || typeof body !== 'object') return null;
   const record = body as {
     node_type?: string;
-    base_prior?: number | string | null;
     description?: string | null;
   };
   const nodeType = record.node_type?.trim();
   if (!nodeType) return null;
-  const basePriorRaw =
-    record.base_prior === '' || record.base_prior === undefined
-      ? null
-      : record.base_prior;
-  const basePrior = basePriorRaw === null ? null : Number(basePriorRaw);
-  if (basePrior !== null && !Number.isFinite(basePrior)) return null;
   const description = record.description?.trim() || null;
-  return { nodeType, basePrior, description };
+  return { nodeType, description };
 }
 
 function parseNodeTypeUpdatePayload(body: unknown) {
   if (!body || typeof body !== 'object') return null;
   const record = body as {
     node_type?: string;
-    base_prior?: number | string | null;
     original_node_type?: string;
   };
   const payload = parseNodeTypePayload(record);
@@ -40,8 +32,8 @@ export async function GET() {
   const nodeTypes = db
     .prepare(
       `
-      SELECT node_type, base_prior, description, updated_at
-      FROM node_type_prior
+      SELECT node_type, description
+      FROM node_type
       ORDER BY node_type ASC
     `
     )
@@ -62,7 +54,7 @@ export async function POST(request: Request) {
 
   const db = getDb();
   const exists = db
-    .prepare('SELECT 1 FROM node_type_prior WHERE node_type = ?')
+    .prepare('SELECT 1 FROM node_type WHERE node_type = ?')
     .get(payload.nodeType);
   if (exists) {
     return NextResponse.json(
@@ -73,11 +65,11 @@ export async function POST(request: Request) {
   db
     .prepare(
       `
-      INSERT INTO node_type_prior (node_type, base_prior, description, updated_at)
-      VALUES (?, ?, ?, datetime('now'))
+      INSERT INTO node_type (node_type, description)
+      VALUES (?, ?)
     `
     )
-    .run(payload.nodeType, payload.basePrior, payload.description);
+    .run(payload.nodeType, payload.description);
 
   return NextResponse.json({ ok: true });
 }
@@ -96,7 +88,7 @@ export async function PUT(request: Request) {
   const tx = db.transaction(() => {
     if (payload.nodeType !== payload.originalNodeType) {
       const exists = db
-        .prepare('SELECT 1 FROM node_type_prior WHERE node_type = ?')
+        .prepare('SELECT 1 FROM node_type WHERE node_type = ?')
         .get(payload.nodeType);
       if (exists) {
         throw new Error('node type already exists');
@@ -104,27 +96,27 @@ export async function PUT(request: Request) {
       db
         .prepare(
           `
-          INSERT INTO node_type_prior (node_type, base_prior, description, updated_at)
-          VALUES (?, ?, ?, datetime('now'))
+          INSERT INTO node_type (node_type, description)
+          VALUES (?, ?)
         `
         )
-        .run(payload.nodeType, payload.basePrior, payload.description);
+        .run(payload.nodeType, payload.description);
       db
         .prepare('UPDATE nodes SET type = ? WHERE type = ?')
         .run(payload.nodeType, payload.originalNodeType);
       db
-        .prepare('DELETE FROM node_type_prior WHERE node_type = ?')
+        .prepare('DELETE FROM node_type WHERE node_type = ?')
         .run(payload.originalNodeType);
     } else {
       db
         .prepare(
           `
-          UPDATE node_type_prior
-          SET base_prior = ?, description = ?, updated_at = datetime('now')
+          UPDATE node_type
+          SET description = ?
           WHERE node_type = ?
         `
         )
-        .run(payload.basePrior, payload.description, payload.nodeType);
+        .run(payload.description, payload.nodeType);
     }
   });
 
@@ -165,7 +157,7 @@ export async function DELETE(request: Request) {
     );
   }
   const result = db
-    .prepare('DELETE FROM node_type_prior WHERE node_type = ?')
+    .prepare('DELETE FROM node_type WHERE node_type = ?')
     .run(payload.nodeType);
   if (result.changes === 0) {
     return NextResponse.json({ error: 'node type not found' }, { status: 404 });

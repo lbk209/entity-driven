@@ -15,7 +15,7 @@ type Review = {
   created_at: string;
   updated_at: string | null;
   preview: string;
-  entities: string[];
+  entity_name: string;
   sentiment?: 'positive' | 'negative';
 };
 
@@ -169,22 +169,19 @@ export default function HomePage() {
               <li key={review.id}>
                 <div className="review-line">
                   <span className="review-preview">
-                    {review.entities.map((name) => (
-                      <span
-                        className="badge badge--filter"
-                        key={name}
-                        role="button"
-                        tabIndex={0}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          handleBadgeClick(name);
-                        }}
-                        onKeyDown={(event) => handleBadgeKeyDown(name, event)}
-                      >
-                        {name}
-                      </span>
-                    ))}
+                    <span
+                      className="badge badge--filter"
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleBadgeClick(review.entity_name);
+                      }}
+                      onKeyDown={(event) => handleBadgeKeyDown(review.entity_name, event)}
+                    >
+                      {review.entity_name}
+                    </span>
                     {review.sentiment && (
                       <span
                         className={`review-sentiment review-sentiment--${review.sentiment}`}

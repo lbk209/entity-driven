@@ -20,28 +20,26 @@ type Edge = {
 
 type EdgeRelation = {
   relation: string;
-  is_transitive: number | null;
-  default_weight: number | null;
   description: string | null;
+  ui_priority: number | null;
+  max_suggestions: number | null;
   allowed_parent_types: string[];
   allowed_child_types: string[];
 };
 
-type NodeTypePrior = {
+type NodeType = {
   node_type: string;
-  base_prior: number | null;
   description: string | null;
-  updated_at: string | null;
 };
-
-type AliasRow = {
+type ReviewAdmin = {
   id: number;
-  alias: string;
-  node_id: number;
-  review_id: number;
-  review_content?: string | null;
-  node_name?: string;
-  node_type?: string;
+  node_id: number | null;
+  node_name: string | null;
+  entity_name: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string | null;
 };
 
 type DraftEdge = {
@@ -54,15 +52,14 @@ type DraftNode = { draftId: string; name: string; type: string };
 type DraftEdgeRelation = {
   draftId: string;
   relation: string;
-  is_transitive: boolean;
-  default_weight: string;
+  ui_priority: string;
+  max_suggestions: string;
   allowed_parent_types: string;
   allowed_child_types: string;
 };
-type DraftNodeTypePrior = {
+type DraftNodeType = {
   draftId: string;
   node_type: string;
-  base_prior: string;
   description: string;
 };
 type EditNode = NodeOption & { original_id: number };
@@ -71,22 +68,59 @@ type EditEdge = Edge & {
   original_child_id: number;
   original_relation: string;
 };
-type EditAlias = AliasRow;
 type EditEdgeRelation = {
   relation: string;
   original_relation: string;
-  is_transitive: number | null;
-  default_weight: number | null;
   description: string;
+  ui_priority: number | null;
+  max_suggestions: number | null;
   allowed_parent_types: string;
   allowed_child_types: string;
 };
-type EditNodeTypePrior = NodeTypePrior & { original_node_type: string };
+type EditNodeType = NodeType & { original_node_type: string };
 type SortDirection = 'asc' | 'desc';
 type SortState<T extends string> = { key: T; direction: SortDirection };
 
 function listToString(list: string[]) {
   return list.join(', ');
+}
+
+function DeleteNodeDialog({
+  node,
+  onCancel,
+  onConfirm
+}: {
+  node: NodeOption;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const reviewCount = Number(node.review_count ?? 0);
+  const edgeCount = Number(node.edge_count ?? 0);
+  const blocked = reviewCount > 0 || edgeCount > 0;
+  let message = 'Delete this node?';
+  if (reviewCount > 0 && edgeCount > 0) {
+    message = `Cannot delete: this node has ${reviewCount} review link(s) and ${edgeCount} edge(s).`;
+  } else if (reviewCount > 0) {
+    message = `Cannot delete: this node has ${reviewCount} review link(s).`;
+  } else if (edgeCount > 0) {
+    message = `Cannot delete: this node has ${edgeCount} edge(s).`;
+  }
+  return (
+    <div className="admin-dialog-backdrop" role="presentation">
+      <div className="admin-dialog" role="dialog" aria-modal="true">
+        <h3>Delete node</h3>
+        <p>{message}</p>
+        <div className="button-row">
+          <button type="button" onClick={onConfirm} disabled={blocked}>
+            Delete
+          </button>
+          <button type="button" className="button-link button-link--ghost" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function parseTypeList(value: string) {
@@ -102,6 +136,12 @@ function compareText(a: string, b: string) {
 
 function compareNumber(a: number, b: number) {
   return a === b ? 0 : a > b ? 1 : -1;
+}
+
+function formatTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 function nextSort<T extends string>(current: SortState<T>, key: T): SortState<T> {
@@ -201,27 +241,26 @@ function TypeMultiSelect({
 export default function EdgesAdminPage() {
   const [nodes, setNodes] = useState<NodeOption[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
-  const [aliases, setAliases] = useState<AliasRow[]>([]);
   const [edgeRelations, setEdgeRelations] = useState<EdgeRelation[]>([]);
-  const [nodeTypePriors, setNodeTypePriors] = useState<NodeTypePrior[]>([]);
+  const [nodeTypes, setNodeTypes] = useState<NodeType[]>([]);
+  const [reviews, setReviews] = useState<ReviewAdmin[]>([]);
   const [drafts, setDrafts] = useState<DraftEdge[]>([]);
   const [nodeDrafts, setNodeDrafts] = useState<DraftNode[]>([]);
   const [edgeRelationDrafts, setEdgeRelationDrafts] = useState<DraftEdgeRelation[]>([]);
-  const [nodeTypeDrafts, setNodeTypeDrafts] = useState<DraftNodeTypePrior[]>([]);
+  const [nodeTypeDrafts, setNodeTypeDrafts] = useState<DraftNodeType[]>([]);
   const [editNode, setEditNode] = useState<EditNode | null>(null);
   const [editEdge, setEditEdge] = useState<EditEdge | null>(null);
-  const [editAlias, setEditAlias] = useState<EditAlias | null>(null);
   const [editEdgeRelation, setEditEdgeRelation] = useState<EditEdgeRelation | null>(null);
-  const [editNodeTypePrior, setEditNodeTypePrior] = useState<EditNodeTypePrior | null>(
+  const [editNodeType, setEditNodeType] = useState<EditNodeType | null>(
     null
   );
+  const [editReview, setEditReview] = useState<ReviewAdmin | null>(null);
   const [status, setStatus] = useState('');
+  const [deleteNodeTarget, setDeleteNodeTarget] = useState<NodeOption | null>(null);
   const [activeTab, setActiveTab] = useState<
-    'nodes' | 'edges' | 'aliases' | 'reference'
+    'nodes' | 'edges' | 'reviews' | 'reference'
   >('nodes');
-  const [referenceView, setReferenceView] = useState<'relations' | 'priors'>(
-    'relations'
-  );
+  const [referenceView, setReferenceView] = useState<'relations' | 'types'>('relations');
   const [nodeSearch, setNodeSearch] = useState('');
   const [nodeSearchField, setNodeSearchField] = useState<'name' | 'type'>('name');
   const [edgeSearch, setEdgeSearch] = useState('');
@@ -230,8 +269,6 @@ export default function EdgesAdminPage() {
   >('parent');
   const [edgeRelatedSuggestOpen, setEdgeRelatedSuggestOpen] = useState(false);
   const [edgeRelatedSelectedId, setEdgeRelatedSelectedId] = useState<number | null>(null);
-  const [aliasSearch, setAliasSearch] = useState('');
-  const [aliasSearchField, setAliasSearchField] = useState<'alias' | 'node'>('alias');
   const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
   const [nodeTypeSuggestTarget, setNodeTypeSuggestTarget] = useState<'edit' | 'draft' | null>(
     null
@@ -240,14 +277,8 @@ export default function EdgesAdminPage() {
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const [nodeSort, setNodeSort] = useState<
-    SortState<'id' | 'name' | 'type' | 'edges'>
+    SortState<'id' | 'name' | 'type' | 'edges' | 'reviews'>
   >({ key: 'name', direction: 'asc' });
-  const [aliasSort, setAliasSort] = useState<
-    SortState<'alias' | 'node' | 'review_id'>
-  >({
-    key: 'alias',
-    direction: 'asc'
-  });
   const [edgeSort, setEdgeSort] = useState<
     SortState<'parent' | 'relation' | 'child'>
   >({
@@ -255,15 +286,21 @@ export default function EdgesAdminPage() {
     direction: 'asc'
   });
   const [relationSort, setRelationSort] = useState<
-    SortState<'parent_types' | 'relation' | 'child_types' | 'default_weight' | 'transitive'>
+    SortState<'parent_types' | 'relation' | 'child_types' | 'ui_priority' | 'max_suggestions'>
   >({
     key: 'relation',
     direction: 'asc'
   });
-  const [priorSort, setPriorSort] = useState<
-    SortState<'node_type' | 'base_prior' | 'updated_at'>
+  const [nodeTypeSort, setNodeTypeSort] = useState<
+    SortState<'node_type'>
   >({
     key: 'node_type',
+    direction: 'asc'
+  });
+  const [reviewSort, setReviewSort] = useState<
+    SortState<'node' | 'entity' | 'user'>
+  >({
+    key: 'node',
     direction: 'asc'
   });
 
@@ -273,18 +310,18 @@ export default function EdgesAdminPage() {
     return map;
   }, [nodes]);
 
-  const nodeTypes = useMemo(() => {
+  const nodeTypeOptions = useMemo(() => {
     const seen = new Set<string>();
     for (const node of nodes) {
       const value = node.type.trim();
       if (value) seen.add(value);
     }
-    for (const nodeType of nodeTypePriors) {
+    for (const nodeType of nodeTypes) {
       const value = nodeType.node_type.trim();
       if (value) seen.add(value);
     }
     return Array.from(seen).sort((a, b) => a.localeCompare(b));
-  }, [nodes, nodeTypePriors]);
+  }, [nodes, nodeTypes]);
 
   const relationOptions = useMemo(() => {
     return edgeRelations
@@ -381,6 +418,9 @@ export default function EdgesAdminPage() {
       if (nodeSort.key === 'edges') {
         return compareNumber(a.edge_count ?? 0, b.edge_count ?? 0) * dir;
       }
+      if (nodeSort.key === 'reviews') {
+        return compareNumber(a.review_count ?? 0, b.review_count ?? 0) * dir;
+      }
       if (nodeSort.key === 'type') {
         return compareText(a.type.toLowerCase(), b.type.toLowerCase()) * dir;
       }
@@ -415,95 +455,16 @@ export default function EdgesAdminPage() {
       }
       const seedIds = new Set([selectedId]);
 
-      const transitiveRelations = new Set(
-        edgeRelations
-          .filter((relation) => relation.is_transitive)
-          .map((relation) => relation.relation)
-      );
-      const edgesByNode = new Map<number, Edge[]>();
-      for (const edge of edges) {
-        const parentEdges = edgesByNode.get(edge.parent_id) ?? [];
-        parentEdges.push(edge);
-        edgesByNode.set(edge.parent_id, parentEdges);
-        const childEdges = edgesByNode.get(edge.child_id) ?? [];
-        childEdges.push(edge);
-        edgesByNode.set(edge.child_id, childEdges);
-      }
-
-      const resultKeys = new Set<string>();
-      const indirectKeys = new Set<string>();
       const edgeSourceNodeId = new Map<string, number>();
-
-      for (const seedId of seedIds) {
-        const connectedEdges = edgesByNode.get(seedId) ?? [];
-        for (const edge of connectedEdges) {
-          const key = edgeKey(edge);
-          resultKeys.add(key);
-          if (!edgeSourceNodeId.has(key)) {
-            edgeSourceNodeId.set(key, seedId);
-          }
-        }
+      const directEdges = edges.filter(
+        (edge) => edge.parent_id === selectedId || edge.child_id === selectedId
+      );
+      for (const edge of directEdges) {
+        edgeSourceNodeId.set(edgeKey(edge), selectedId);
       }
-
-      for (const relation of transitiveRelations) {
-        const forwardVisited = new Set<number>(seedIds);
-        const forwardQueue = Array.from(seedIds);
-        while (forwardQueue.length > 0) {
-          const nodeId = forwardQueue.shift();
-          if (nodeId === undefined) break;
-          const connectedEdges = edgesByNode.get(nodeId) ?? [];
-          for (const edge of connectedEdges) {
-            if (edge.relation !== relation) continue;
-            if (edge.parent_id !== nodeId) continue;
-            const key = edgeKey(edge);
-            const isDirect =
-              seedIds.has(edge.parent_id) || seedIds.has(edge.child_id);
-            resultKeys.add(key);
-            if (!edgeSourceNodeId.has(key)) {
-              edgeSourceNodeId.set(key, nodeId);
-            }
-            if (!isDirect) {
-              indirectKeys.add(key);
-            }
-            const nextNodeId = edge.child_id;
-            if (!forwardVisited.has(nextNodeId)) {
-              forwardVisited.add(nextNodeId);
-              forwardQueue.push(nextNodeId);
-            }
-          }
-        }
-
-        const reverseVisited = new Set<number>(seedIds);
-        const reverseQueue = Array.from(seedIds);
-        while (reverseQueue.length > 0) {
-          const nodeId = reverseQueue.shift();
-          if (nodeId === undefined) break;
-          const connectedEdges = edgesByNode.get(nodeId) ?? [];
-          for (const edge of connectedEdges) {
-            if (edge.relation !== relation) continue;
-            if (edge.child_id !== nodeId) continue;
-            const key = edgeKey(edge);
-            const isDirect =
-              seedIds.has(edge.parent_id) || seedIds.has(edge.child_id);
-            resultKeys.add(key);
-            if (!edgeSourceNodeId.has(key)) {
-              edgeSourceNodeId.set(key, nodeId);
-            }
-            if (!isDirect) {
-              indirectKeys.add(key);
-            }
-            const nextNodeId = edge.parent_id;
-            if (!reverseVisited.has(nextNodeId)) {
-              reverseVisited.add(nextNodeId);
-              reverseQueue.push(nextNodeId);
-            }
-          }
-        }
-      }
-
       return {
-        edges: edges.filter((edge) => resultKeys.has(edgeKey(edge))),
-        indirectKeys,
+        edges: directEdges,
+        indirectKeys: new Set<string>(),
         edgeSourceNodeId,
         searchLabel: (() => {
           const seedId = Array.from(seedIds)[0];
@@ -560,16 +521,17 @@ export default function EdgesAdminPage() {
     const list = [...edgeRelations];
     const dir = relationSort.direction === 'asc' ? 1 : -1;
     list.sort((a, b) => {
-      if (relationSort.key === 'default_weight') {
-        if (a.default_weight === null && b.default_weight === null) return 0;
-        if (a.default_weight === null) return 1;
-        if (b.default_weight === null) return -1;
-        return compareNumber(a.default_weight, b.default_weight) * dir;
+      if (relationSort.key === 'ui_priority') {
+        if (a.ui_priority === null && b.ui_priority === null) return 0;
+        if (a.ui_priority === null) return 1;
+        if (b.ui_priority === null) return -1;
+        return compareNumber(a.ui_priority, b.ui_priority) * dir;
       }
-      if (relationSort.key === 'transitive') {
-        const aValue = a.is_transitive ? 1 : 0;
-        const bValue = b.is_transitive ? 1 : 0;
-        return compareNumber(aValue, bValue) * dir;
+      if (relationSort.key === 'max_suggestions') {
+        if (a.max_suggestions === null && b.max_suggestions === null) return 0;
+        if (a.max_suggestions === null) return 1;
+        if (b.max_suggestions === null) return -1;
+        return compareNumber(a.max_suggestions, b.max_suggestions) * dir;
       }
       if (relationSort.key === 'parent_types') {
         const aLabel = listToString(a.allowed_parent_types).toLowerCase();
@@ -586,54 +548,37 @@ export default function EdgesAdminPage() {
     return list;
   }, [edgeRelations, relationSort]);
 
-  const sortedNodeTypePriors = useMemo(() => {
-    const list = [...nodeTypePriors];
-    const dir = priorSort.direction === 'asc' ? 1 : -1;
+  const sortedNodeTypes = useMemo(() => {
+    const list = [...nodeTypes];
+    const dir = nodeTypeSort.direction === 'asc' ? 1 : -1;
+    list.sort((a, b) => compareText(a.node_type.toLowerCase(), b.node_type.toLowerCase()) * dir);
+    return list;
+  }, [nodeTypes, nodeTypeSort]);
+
+  const sortedReviews = useMemo(() => {
+    const list = [...reviews];
+    const dir = reviewSort.direction === 'asc' ? 1 : -1;
     list.sort((a, b) => {
-      if (priorSort.key === 'base_prior') {
-        if (a.base_prior === null && b.base_prior === null) return 0;
-        if (a.base_prior === null) return 1;
-        if (b.base_prior === null) return -1;
-        return compareNumber(a.base_prior, b.base_prior) * dir;
+      if (reviewSort.key === 'entity') {
+        return compareText(a.entity_name.toLowerCase(), b.entity_name.toLowerCase()) * dir;
       }
-      if (priorSort.key === 'updated_at') {
-        if (!a.updated_at && !b.updated_at) return 0;
-        if (!a.updated_at) return 1;
-        if (!b.updated_at) return -1;
-        return compareText(a.updated_at, b.updated_at) * dir;
+      if (reviewSort.key === 'user') {
+        return compareText(a.user_id.toLowerCase(), b.user_id.toLowerCase()) * dir;
       }
-      return compareText(a.node_type.toLowerCase(), b.node_type.toLowerCase()) * dir;
+      const aNode =
+        (a.node_id ? nodeMap.get(a.node_id)?.name : null) ?? a.node_name ?? '';
+      const bNode =
+        (b.node_id ? nodeMap.get(b.node_id)?.name : null) ?? b.node_name ?? '';
+      return compareText(aNode.toLowerCase(), bNode.toLowerCase()) * dir;
     });
     return list;
-  }, [nodeTypePriors, priorSort]);
+  }, [nodeMap, reviewSort, reviews]);
 
-  const filteredAliases = useMemo(() => {
-    const term = aliasSearch.trim().toLowerCase();
-    if (!term) return aliases;
-    return aliases.filter((alias) => {
-      const node = nodeMap.get(alias.node_id);
-      const nodeName = node?.name.toLowerCase() ?? '';
-      if (aliasSearchField === 'node') return nodeName.includes(term);
-      return alias.alias.toLowerCase().includes(term);
-    });
-  }, [aliases, aliasSearch, aliasSearchField, nodeMap]);
-
-  const sortedAliases = useMemo(() => {
-    const list = [...filteredAliases];
-    const dir = aliasSort.direction === 'asc' ? 1 : -1;
-    list.sort((a, b) => {
-      if (aliasSort.key === 'review_id') {
-        return compareNumber(a.review_id, b.review_id) * dir;
-      }
-      if (aliasSort.key === 'node') {
-        const aName = nodeMap.get(a.node_id)?.name.toLowerCase() ?? '';
-        const bName = nodeMap.get(b.node_id)?.name.toLowerCase() ?? '';
-        return compareText(aName, bName) * dir;
-      }
-      return compareText(a.alias.toLowerCase(), b.alias.toLowerCase()) * dir;
-    });
-    return list;
-  }, [filteredAliases, aliasSort, nodeMap]);
+  async function loadReviews() {
+    const res = await fetch('/api/admin/reviews');
+    const data = await res.json().catch(() => ({}));
+    setReviews(data.reviews || []);
+  }
 
   async function loadNodes() {
     const res = await fetch('/api/nodes');
@@ -643,6 +588,10 @@ export default function EdgesAdminPage() {
 
   useEffect(() => {
     loadNodes().catch(() => setNodes([]));
+  }, []);
+
+  useEffect(() => {
+    loadReviews().catch(() => setReviews([]));
   }, []);
 
   async function loadEdges() {
@@ -655,16 +604,6 @@ export default function EdgesAdminPage() {
     loadEdges().catch(() => setEdges([]));
   }, []);
 
-  async function loadAliases() {
-    const res = await fetch('/api/aliases');
-    const data = await res.json().catch(() => ({}));
-    setAliases(data.aliases || []);
-  }
-
-  useEffect(() => {
-    loadAliases().catch(() => setAliases([]));
-  }, []);
-
   async function loadEdgeRelations() {
     const res = await fetch('/api/edge-relations');
     const data = await res.json().catch(() => ({}));
@@ -675,14 +614,14 @@ export default function EdgesAdminPage() {
     loadEdgeRelations().catch(() => setEdgeRelations([]));
   }, []);
 
-  async function loadNodeTypePriors() {
-    const res = await fetch('/api/node-type-prior');
+  async function loadNodeTypes() {
+    const res = await fetch('/api/node-type');
     const data = await res.json().catch(() => ({}));
-    setNodeTypePriors(data.node_types || []);
+    setNodeTypes(data.node_types || []);
   }
 
   useEffect(() => {
-    loadNodeTypePriors().catch(() => setNodeTypePriors([]));
+    loadNodeTypes().catch(() => setNodeTypes([]));
   }, []);
 
   useEffect(() => {
@@ -726,8 +665,8 @@ export default function EdgesAdminPage() {
     const draft: DraftEdgeRelation = {
       draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       relation: '',
-      is_transitive: false,
-      default_weight: '1',
+      ui_priority: '',
+      max_suggestions: '',
       allowed_parent_types: '',
       allowed_child_types: ''
     };
@@ -736,11 +675,10 @@ export default function EdgesAdminPage() {
   }
 
   function addNodeTypeDraft() {
-    if (nodeTypeDrafts.length > 0 || editNodeTypePrior) return;
-    const draft: DraftNodeTypePrior = {
+    if (nodeTypeDrafts.length > 0 || editNodeType) return;
+    const draft: DraftNodeType = {
       draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       node_type: '',
-      base_prior: '',
       description: ''
     };
     setNodeTypeDrafts((prev) => [...prev, draft]);
@@ -794,7 +732,7 @@ export default function EdgesAdminPage() {
     );
   }
 
-  function updateNodeTypeDraft(draftId: string, next: Partial<DraftNodeTypePrior>) {
+  function updateNodeTypeDraft(draftId: string, next: Partial<DraftNodeType>) {
     setNodeTypeDrafts((prev) =>
       prev.map((draft) =>
         draft.draftId === draftId ? { ...draft, ...next } : draft
@@ -810,16 +748,12 @@ export default function EdgesAdminPage() {
     setEditEdge((prev) => (prev ? { ...prev, ...next } : prev));
   }
 
-  function updateEditAlias(next: Partial<AliasRow>) {
-    setEditAlias((prev) => (prev ? { ...prev, ...next } : prev));
-  }
-
   function updateEditEdgeRelation(next: Partial<EditEdgeRelation>) {
     setEditEdgeRelation((prev) => (prev ? { ...prev, ...next } : prev));
   }
 
-  function updateEditNodeTypePrior(next: Partial<NodeTypePrior>) {
-    setEditNodeTypePrior((prev) => (prev ? { ...prev, ...next } : prev));
+  function updateEditNodeType(next: Partial<NodeType>) {
+    setEditNodeType((prev) => (prev ? { ...prev, ...next } : prev));
   }
 
   async function saveNodeDraft(draft: DraftNode) {
@@ -844,8 +778,7 @@ export default function EdgesAdminPage() {
       )
     );
     await loadNodes();
-    await loadNodeTypePriors();
-    await loadAliases();
+    await loadNodeTypes();
   }
 
   async function saveEdgeRelationDraft(draft: DraftEdgeRelation) {
@@ -860,11 +793,16 @@ export default function EdgesAdminPage() {
       setStatus('Provide allowed parent and child types.');
       return;
     }
-    const weightValue = draft.default_weight.trim()
-      ? Number(draft.default_weight)
+    const uiPriorityValue = draft.ui_priority.trim() ? Number(draft.ui_priority) : null;
+    if (uiPriorityValue !== null && !Number.isFinite(uiPriorityValue)) {
+      setStatus('UI priority must be a number.');
+      return;
+    }
+    const maxSuggestionsValue = draft.max_suggestions.trim()
+      ? Number(draft.max_suggestions)
       : null;
-    if (weightValue !== null && !Number.isFinite(weightValue)) {
-      setStatus('Default weight must be a number.');
+    if (maxSuggestionsValue !== null && !Number.isFinite(maxSuggestionsValue)) {
+      setStatus('Max suggestions must be a number.');
       return;
     }
     const res = await fetch('/api/edge-relations', {
@@ -872,8 +810,8 @@ export default function EdgesAdminPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         relation: draft.relation,
-        is_transitive: draft.is_transitive ? 1 : 0,
-        default_weight: weightValue,
+        ui_priority: uiPriorityValue,
+        max_suggestions: maxSuggestionsValue,
         allowed_parent_types: allowedParentTypes,
         allowed_child_types: allowedChildTypes
       })
@@ -889,8 +827,8 @@ export default function EdgesAdminPage() {
           ? {
               ...item,
               relation: '',
-              is_transitive: false,
-              default_weight: '',
+              ui_priority: '',
+              max_suggestions: '',
               allowed_parent_types: '',
               allowed_child_types: ''
             }
@@ -900,25 +838,17 @@ export default function EdgesAdminPage() {
     await loadEdgeRelations();
   }
 
-  async function saveNodeTypeDraft(draft: DraftNodeTypePrior) {
+  async function saveNodeTypeDraft(draft: DraftNodeType) {
     setStatus('');
     if (!draft.node_type.trim()) {
       setStatus('Node type is required.');
       return;
     }
-    const basePriorValue = draft.base_prior.trim()
-      ? Number(draft.base_prior)
-      : null;
-    if (basePriorValue !== null && !Number.isFinite(basePriorValue)) {
-      setStatus('Base prior must be a number.');
-      return;
-    }
-    const res = await fetch('/api/node-type-prior', {
+    const res = await fetch('/api/node-type', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         node_type: draft.node_type,
-        base_prior: basePriorValue,
         description: draft.description
       })
     });
@@ -930,11 +860,11 @@ export default function EdgesAdminPage() {
     setNodeTypeDrafts((prev) =>
       prev.map((item) =>
         item.draftId === draft.draftId
-          ? { ...item, node_type: '', base_prior: '', description: '' }
+          ? { ...item, node_type: '', description: '' }
           : item
       )
     );
-    await loadNodeTypePriors();
+    await loadNodeTypes();
   }
 
   async function saveEditNode(node: EditNode) {
@@ -956,28 +886,8 @@ export default function EdgesAdminPage() {
     }
     setEditNode(null);
     await loadNodes();
-    await loadNodeTypePriors();
+    await loadNodeTypes();
     await loadEdges();
-    await loadAliases();
-  }
-
-  async function saveEditAlias(alias: EditAlias) {
-    setStatus('');
-    const res = await fetch('/api/aliases', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: alias.id,
-        node_id: alias.node_id
-      })
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setStatus(data.error || 'Failed to update alias.');
-      return;
-    }
-    setEditAlias(null);
-    await loadAliases();
   }
 
   async function saveEditEdgeRelation(relation: EditEdgeRelation) {
@@ -988,12 +898,16 @@ export default function EdgesAdminPage() {
       setStatus('Provide allowed parent and child types.');
       return;
     }
-    const weightValue =
-      relation.default_weight === null
-        ? null
-        : Number(relation.default_weight);
-    if (weightValue !== null && !Number.isFinite(weightValue)) {
-      setStatus('Default weight must be a number.');
+    const uiPriorityValue =
+      relation.ui_priority === null ? null : Number(relation.ui_priority);
+    if (uiPriorityValue !== null && !Number.isFinite(uiPriorityValue)) {
+      setStatus('UI priority must be a number.');
+      return;
+    }
+    const maxSuggestionsValue =
+      relation.max_suggestions === null ? null : Number(relation.max_suggestions);
+    if (maxSuggestionsValue !== null && !Number.isFinite(maxSuggestionsValue)) {
+      setStatus('Max suggestions must be a number.');
       return;
     }
     const res = await fetch('/api/edge-relations', {
@@ -1001,9 +915,9 @@ export default function EdgesAdminPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         relation: relation.relation,
-        is_transitive: relation.is_transitive ? 1 : 0,
-        default_weight: weightValue,
         description: relation.description,
+        ui_priority: uiPriorityValue,
+        max_suggestions: maxSuggestionsValue,
         allowed_parent_types: allowedParentTypes,
         allowed_child_types: allowedChildTypes,
         original_relation: relation.original_relation
@@ -1019,20 +933,13 @@ export default function EdgesAdminPage() {
     await loadEdges();
   }
 
-  async function saveEditNodeTypePrior(nodeType: EditNodeTypePrior) {
+  async function saveEditNodeType(nodeType: EditNodeType) {
     setStatus('');
-    const basePriorValue =
-      nodeType.base_prior === null ? null : Number(nodeType.base_prior);
-    if (basePriorValue !== null && !Number.isFinite(basePriorValue)) {
-      setStatus('Base prior must be a number.');
-      return;
-    }
-    const res = await fetch('/api/node-type-prior', {
+    const res = await fetch('/api/node-type', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         node_type: nodeType.node_type,
-        base_prior: basePriorValue,
         description: nodeType.description,
         original_node_type: nodeType.original_node_type
       })
@@ -1042,26 +949,55 @@ export default function EdgesAdminPage() {
       setStatus(data.error || 'Failed to update node type.');
       return;
     }
-    setEditNodeTypePrior(null);
-    await loadNodeTypePriors();
+    setEditNodeType(null);
+    await loadNodeTypes();
     await loadNodes();
     await loadEdges();
-    await loadAliases();
+  }
+
+  async function saveEditReview(review: ReviewAdmin) {
+    setStatus('');
+    const res = await fetch('/api/admin/reviews', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: review.id,
+        node_id: review.node_id
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to update review.');
+      return;
+    }
+    setEditReview(null);
+    await loadReviews();
+  }
+
+  function startEditReview(review: ReviewAdmin) {
+    setEditReview({ ...review });
+  }
+
+  function cancelEditReview() {
+    setEditReview(null);
   }
 
   async function deleteNode(node: NodeOption) {
     setStatus('');
-    const reviewCount = node.review_count ?? 0;
-    const edgeCount = node.edge_count ?? 0;
-    const message =
-      reviewCount > 0 || edgeCount > 0
-        ? `This node is referenced by ${reviewCount} review link(s) and ${edgeCount} edge(s). Delete anyway?`
-        : 'Delete this node?';
-    if (!window.confirm(message)) return;
+    setDeleteNodeTarget(node);
+  }
+
+  async function confirmDeleteNode() {
+    if (!deleteNodeTarget) return;
+    const reviewCount = Number(deleteNodeTarget.review_count ?? 0);
+    const edgeCount = Number(deleteNodeTarget.edge_count ?? 0);
+    if (reviewCount > 0 || edgeCount > 0) {
+      return;
+    }
     const res = await fetch('/api/nodes', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...node, force: reviewCount > 0 || edgeCount > 0 })
+      body: JSON.stringify({ ...deleteNodeTarget, force: false })
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -1069,9 +1005,9 @@ export default function EdgesAdminPage() {
       return;
     }
     setEditNode(null);
+    setDeleteNodeTarget(null);
     await loadNodes();
     await loadEdges();
-    await loadAliases();
   }
 
   async function saveDraft(draft: DraftEdge) {
@@ -1146,7 +1082,7 @@ export default function EdgesAdminPage() {
     }
     const source = nodes.find((node) => node.id === sourceId);
     const target = nodes.find((node) => node.id === mergeTargetId);
-    const message = `Merge ${source?.name ?? sourceId} into ${target?.name ?? mergeTargetId}? This will move aliases, reviews, and edges to the target.`;
+    const message = `Merge ${source?.name ?? sourceId} into ${target?.name ?? mergeTargetId}? This will move reviews and edges to the target.`;
     if (!window.confirm(message)) return;
     setStatus('');
     const res = await fetch('/api/nodes/merge', {
@@ -1163,15 +1099,6 @@ export default function EdgesAdminPage() {
     setMergeTargetId(null);
     await loadNodes();
     await loadEdges();
-    await loadAliases();
-  }
-
-  function startEditAlias(alias: AliasRow) {
-    setEditAlias(alias);
-  }
-
-  function cancelEditAlias() {
-    setEditAlias(null);
   }
 
   function startEditEdgeRelation(relation: EdgeRelation) {
@@ -1179,8 +1106,8 @@ export default function EdgesAdminPage() {
     setEditEdgeRelation({
       relation: relation.relation,
       original_relation: relation.relation,
-      is_transitive: relation.is_transitive,
-      default_weight: relation.default_weight,
+      ui_priority: relation.ui_priority,
+      max_suggestions: relation.max_suggestions,
       allowed_parent_types: listToString(relation.allowed_parent_types),
       allowed_child_types: listToString(relation.allowed_child_types),
       description: relation.description ?? ''
@@ -1191,34 +1118,17 @@ export default function EdgesAdminPage() {
     setEditEdgeRelation(null);
   }
 
-  function startEditNodeTypePrior(nodeType: NodeTypePrior) {
+  function startEditNodeType(nodeType: NodeType) {
     if (nodeTypeDrafts.length > 0) return;
-    setEditNodeTypePrior({
+    setEditNodeType({
       ...nodeType,
       description: nodeType.description ?? '',
       original_node_type: nodeType.node_type
     });
   }
 
-  function cancelEditNodeTypePrior() {
-    setEditNodeTypePrior(null);
-  }
-
-  async function deleteAlias(alias: AliasRow) {
-    setStatus('');
-    if (!window.confirm('Delete this alias?')) return;
-    const res = await fetch('/api/aliases', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: alias.id })
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setStatus(data.error || 'Failed to delete alias.');
-      return;
-    }
-    setEditAlias(null);
-    await loadAliases();
+  function cancelEditNodeType() {
+    setEditNodeType(null);
   }
 
   async function deleteEdgeRelation(relation: EdgeRelation) {
@@ -1239,10 +1149,10 @@ export default function EdgesAdminPage() {
     await loadEdges();
   }
 
-  async function deleteNodeTypePrior(nodeType: NodeTypePrior) {
+  async function deleteNodeType(nodeType: NodeType) {
     setStatus('');
     if (!window.confirm('Delete this node type?')) return;
-    const res = await fetch('/api/node-type-prior', {
+    const res = await fetch('/api/node-type', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ node_type: nodeType.node_type })
@@ -1252,11 +1162,10 @@ export default function EdgesAdminPage() {
       setStatus(data.error || 'Failed to delete node type.');
       return;
     }
-    setEditNodeTypePrior(null);
-    await loadNodeTypePriors();
+    setEditNodeType(null);
+    await loadNodeTypes();
     await loadNodes();
     await loadEdges();
-    await loadAliases();
   }
 
   async function saveEditEdge(edge: EditEdge) {
@@ -1347,20 +1256,20 @@ export default function EdgesAdminPage() {
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === 'aliases'}
-            className={`admin-tab ${activeTab === 'aliases' ? 'admin-tab--active' : ''}`}
-            onClick={() => setActiveTab('aliases')}
-          >
-            <strong>Aliases</strong>
-          </button>
-          <button
-            type="button"
-            role="tab"
             aria-selected={activeTab === 'edges'}
             className={`admin-tab ${activeTab === 'edges' ? 'admin-tab--active' : ''}`}
             onClick={() => setActiveTab('edges')}
           >
             <strong>Edges</strong>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'reviews'}
+            className={`admin-tab ${activeTab === 'reviews' ? 'admin-tab--active' : ''}`}
+            onClick={() => setActiveTab('reviews')}
+          >
+            <strong>Reviews</strong>
           </button>
           <button
             type="button"
@@ -1407,9 +1316,9 @@ export default function EdgesAdminPage() {
                         setNodeTypeFilterActive(false);
                       }}
                     />
-                    {nodeTypeSuggestTarget === 'edit' && nodeTypes.length > 0 && (
+                    {nodeTypeSuggestTarget === 'edit' && nodeTypeOptions.length > 0 && (
                       <div className="admin-type-suggestions">
-                        {nodeTypes
+                        {nodeTypeOptions
                           .filter((type) => {
                             const term = editNode.type.trim().toLowerCase();
                             if (!nodeTypeFilterActive || !term) return true;
@@ -1512,9 +1421,9 @@ export default function EdgesAdminPage() {
                           setNodeTypeFilterActive(false);
                         }}
                       />
-                      {nodeTypeSuggestTarget === 'draft' && nodeTypes.length > 0 && (
+                      {nodeTypeSuggestTarget === 'draft' && nodeTypeOptions.length > 0 && (
                         <div className="admin-type-suggestions">
-                          {nodeTypes
+                          {nodeTypeOptions
                             .filter((type) => {
                               const term = draft.type.trim().toLowerCase();
                               if (!nodeTypeFilterActive || !term) return true;
@@ -1578,93 +1487,6 @@ export default function EdgesAdminPage() {
                 >
                   Insert node
                 </button>
-              </div>
-            )}
-          </>
-        )}
-
-        {activeTab === 'aliases' && (
-          <>
-            {editAlias ? (
-              <>
-                <div className="row review-footer admin-row admin-row--form admin-row--form-alias admin-form">
-                  <div>
-                    <input
-                      aria-label="Alias"
-                      placeholder="Alias"
-                      value={editAlias.alias}
-                      readOnly
-                    />
-                  </div>
-                  <div>
-                    <select
-                      aria-label="Canonical node"
-                      value={editAlias.node_id}
-                      onChange={(event) =>
-                        updateEditAlias({
-                          node_id: Number(event.target.value)
-                        })
-                      }
-                    >
-                      {!nodeMap.has(editAlias.node_id) && (
-                        <option value={editAlias.node_id}>
-                          {editAlias.node_id}
-                        </option>
-                      )}
-                      {nodes.map((node) => (
-                        <option key={node.id} value={node.id}>
-                          {node.name} ({node.type})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="admin-row__actions admin-row__actions--form">
-                    <div className="button-row">
-                      <button type="button" onClick={() => saveEditAlias(editAlias)}>
-                        Update
-                      </button>
-                      <button type="button" onClick={() => deleteAlias(editAlias)}>
-                        Delete
-                      </button>
-                      <button
-                        type="button"
-                        className="button-link button-link--ghost"
-                        onClick={cancelEditAlias}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div className="admin-form">
-                  <textarea
-                    className="admin-textarea--compact"
-                    aria-label="Review content"
-                    placeholder="Review content"
-                    rows={2}
-                    readOnly
-                    value={editAlias.review_content ?? ''}
-                  />
-                </div>
-              </>
-            ) : (
-              <div className="admin-toolbar">
-                <select
-                  className="admin-toolbar__select"
-                  aria-label="Filter alias search field"
-                  value={aliasSearchField}
-                  onChange={(event) =>
-                    setAliasSearchField(event.target.value as 'alias' | 'node')
-                  }
-                >
-                  <option value="alias">Alias</option>
-                  <option value="node">Node</option>
-                </select>
-                <input
-                  placeholder="Search aliases"
-                  value={aliasSearch}
-                  onChange={(event) => setAliasSearch(event.target.value)}
-                />
               </div>
             )}
           </>
@@ -1976,6 +1798,93 @@ export default function EdgesAdminPage() {
           </>
         )}
 
+        {activeTab === 'reviews' && (
+          <>
+            {editReview ? (
+              <>
+                <div className="row review-footer admin-row admin-row--form admin-row--form-review admin-form">
+                  <div>
+                    <select
+                      className={editReview.node_id ? '' : 'admin-select--placeholder'}
+                      aria-label="Linked node"
+                      value={editReview.node_id ?? ''}
+                      onChange={(event) =>
+                        setEditReview((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            node_id: event.target.value
+                              ? Number(event.target.value)
+                              : null
+                          };
+                        })
+                      }
+                    >
+                      <option value="">Unlinked</option>
+                      {nodes.map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {node.name} ({node.type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <input
+                      aria-label="Entity name"
+                      value={editReview.entity_name}
+                      disabled
+                      className="admin-input--readonly"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      aria-label="User id"
+                      value={editReview.user_id}
+                      disabled
+                      className="admin-input--readonly"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      aria-label="Updated at"
+                      value={formatTimestamp(editReview.updated_at ?? editReview.created_at)}
+                      disabled
+                      className="admin-input--readonly"
+                    />
+                  </div>
+                  <div className="admin-row__actions admin-row__actions--form">
+                    <div className="button-row">
+                      <button type="button" onClick={() => saveEditReview(editReview)}>
+                        Update
+                      </button>
+                      <button
+                        type="button"
+                        className="button-link button-link--ghost"
+                        onClick={cancelEditReview}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="admin-form">
+                  <textarea
+                    className="admin-textarea--compact admin-textarea--readonly"
+                    aria-label="Review content"
+                    rows={4}
+                    value={editReview.content}
+                    disabled
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="admin-toolbar">
+                <small>Click a review to view details.</small>
+              </div>
+            )}
+          </>
+        )}
+
         {activeTab === 'reference' && (
           <>
             <div className="admin-toolbar admin-toolbar--reference">
@@ -1992,10 +1901,10 @@ export default function EdgesAdminPage() {
                 <input
                   type="radio"
                   name="reference-view"
-                  checked={referenceView === 'priors'}
-                  onChange={() => setReferenceView('priors')}
+                  checked={referenceView === 'types'}
+                  onChange={() => setReferenceView('types')}
                 />
-                <span>Node type priors</span>
+                <span>Node types</span>
               </label>
             </div>
 
@@ -2008,7 +1917,7 @@ export default function EdgesAdminPage() {
                         <TypeMultiSelect
                           ariaLabel="Allowed parent types"
                           placeholder="Select parent types"
-                          options={nodeTypes}
+                          options={nodeTypeOptions}
                           value={editEdgeRelation.allowed_parent_types}
                           onChange={(nextValue) =>
                             updateEditEdgeRelation({
@@ -2031,7 +1940,7 @@ export default function EdgesAdminPage() {
                         <TypeMultiSelect
                           ariaLabel="Allowed child types"
                           placeholder="Select child types"
-                          options={nodeTypes}
+                          options={nodeTypeOptions}
                           value={editEdgeRelation.allowed_child_types}
                           onChange={(nextValue) =>
                             updateEditEdgeRelation({
@@ -2042,35 +1951,35 @@ export default function EdgesAdminPage() {
                       </div>
                       <div>
                         <input
-                          aria-label="Default weight"
-                          placeholder="Default weight"
+                          aria-label="UI priority"
+                          placeholder="UI priority"
                           type="number"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={editEdgeRelation.default_weight ?? ''}
+                          step="1"
+                          value={editEdgeRelation.ui_priority ?? ''}
                           onChange={(event) =>
                             updateEditEdgeRelation({
-                              default_weight: event.target.value
+                              ui_priority: event.target.value
                                 ? Number(event.target.value)
                                 : null
                             })
                           }
                         />
                       </div>
-                      <div className="admin-checkbox">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={Boolean(editEdgeRelation.is_transitive)}
-                            onChange={(event) =>
-                              updateEditEdgeRelation({
-                                is_transitive: event.target.checked ? 1 : 0
-                              })
-                            }
-                          />
-                          <span>Transitive</span>
-                        </label>
+                      <div>
+                        <input
+                          aria-label="Max suggestions"
+                          placeholder="Max suggestions"
+                          type="number"
+                          step="1"
+                          value={editEdgeRelation.max_suggestions ?? ''}
+                          onChange={(event) =>
+                            updateEditEdgeRelation({
+                              max_suggestions: event.target.value
+                                ? Number(event.target.value)
+                                : null
+                            })
+                          }
+                        />
                       </div>
                       <div className="admin-row__actions admin-row__actions--form">
                         <div className="button-row">
@@ -2119,7 +2028,7 @@ export default function EdgesAdminPage() {
                         <TypeMultiSelect
                           ariaLabel="Allowed parent types"
                           placeholder="Select parent types"
-                          options={nodeTypes}
+                          options={nodeTypeOptions}
                           value={draft.allowed_parent_types}
                           onChange={(nextValue) =>
                             updateEdgeRelationDraft(draft.draftId, {
@@ -2144,7 +2053,7 @@ export default function EdgesAdminPage() {
                         <TypeMultiSelect
                           ariaLabel="Allowed child types"
                           placeholder="Select child types"
-                          options={nodeTypes}
+                          options={nodeTypeOptions}
                           value={draft.allowed_child_types}
                           onChange={(nextValue) =>
                             updateEdgeRelationDraft(draft.draftId, {
@@ -2155,33 +2064,31 @@ export default function EdgesAdminPage() {
                       </div>
                       <div>
                         <input
-                          aria-label="Default weight"
-                          placeholder="Default weight"
+                          aria-label="UI priority"
+                          placeholder="UI priority"
                           type="number"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={draft.default_weight}
+                          step="1"
+                          value={draft.ui_priority}
                           onChange={(event) =>
                             updateEdgeRelationDraft(draft.draftId, {
-                              default_weight: event.target.value
+                              ui_priority: event.target.value
                             })
                           }
                         />
                       </div>
-                      <div className="admin-checkbox">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={draft.is_transitive}
-                            onChange={(event) =>
-                              updateEdgeRelationDraft(draft.draftId, {
-                                is_transitive: event.target.checked
-                              })
-                            }
-                          />
-                          <span>Transitive</span>
-                        </label>
+                      <div>
+                        <input
+                          aria-label="Max suggestions"
+                          placeholder="Max suggestions"
+                          type="number"
+                          step="1"
+                          value={draft.max_suggestions}
+                          onChange={(event) =>
+                            updateEdgeRelationDraft(draft.draftId, {
+                              max_suggestions: event.target.value
+                            })
+                          }
+                        />
                       </div>
                       <div className="admin-row__actions admin-row__actions--form">
                         <div className="button-row">
@@ -2216,55 +2123,33 @@ export default function EdgesAdminPage() {
               </>
             )}
 
-            {referenceView === 'priors' && (
+            {referenceView === 'types' && (
               <>
-                {editNodeTypePrior ? (
+                {editNodeType ? (
                   <>
                     <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
                       <div>
                         <input
                           aria-label="Node type"
                           placeholder="Node type"
-                          value={editNodeTypePrior.node_type}
+                          value={editNodeType.node_type}
                           onChange={(event) =>
-                            updateEditNodeTypePrior({ node_type: event.target.value })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <input
-                          aria-label="Base prior"
-                          placeholder="Base prior"
-                          type="number"
-                          step="0.01"
-                          value={editNodeTypePrior.base_prior ?? ''}
-                          onChange={(event) =>
-                            updateEditNodeTypePrior({
-                              base_prior: event.target.value
-                                ? Number(event.target.value)
-                                : null
-                            })
+                            updateEditNodeType({ node_type: event.target.value })
                           }
                         />
                       </div>
                       <div className="admin-row__actions admin-row__actions--form">
                         <div className="button-row">
-                          <button
-                            type="button"
-                            onClick={() => saveEditNodeTypePrior(editNodeTypePrior)}
-                          >
+                          <button type="button" onClick={() => saveEditNodeType(editNodeType)}>
                             Update
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteNodeTypePrior(editNodeTypePrior)}
-                          >
+                          <button type="button" onClick={() => deleteNodeType(editNodeType)}>
                             Delete
                           </button>
                           <button
                             type="button"
                             className="button-link button-link--ghost"
-                            onClick={cancelEditNodeTypePrior}
+                            onClick={cancelEditNodeType}
                           >
                             Cancel
                           </button>
@@ -2277,9 +2162,9 @@ export default function EdgesAdminPage() {
                         aria-label="Node type description"
                         placeholder="Description"
                         rows={2}
-                        value={editNodeTypePrior.description ?? ''}
+                        value={editNodeType.description ?? ''}
                         onChange={(event) =>
-                          updateEditNodeTypePrior({ description: event.target.value })
+                          updateEditNodeType({ description: event.target.value })
                         }
                       />
                     </div>
@@ -2300,26 +2185,9 @@ export default function EdgesAdminPage() {
                             }
                           />
                         </div>
-                        <div>
-                          <input
-                            aria-label="Base prior"
-                            placeholder="Base prior"
-                            type="number"
-                            step="0.01"
-                            value={draft.base_prior}
-                            onChange={(event) =>
-                              updateNodeTypeDraft(draft.draftId, {
-                                base_prior: event.target.value
-                              })
-                            }
-                          />
-                        </div>
                         <div className="admin-row__actions admin-row__actions--form">
                           <div className="button-row">
-                            <button
-                              type="button"
-                              onClick={() => saveNodeTypeDraft(draft)}
-                            >
+                            <button type="button" onClick={() => saveNodeTypeDraft(draft)}>
                               Save
                             </button>
                             <button
@@ -2353,7 +2221,7 @@ export default function EdgesAdminPage() {
                     <button
                       type="button"
                       onClick={addNodeTypeDraft}
-                      disabled={nodeTypeDrafts.length > 0 || !!editNodeTypePrior}
+                      disabled={nodeTypeDrafts.length > 0 || !!editNodeType}
                     >
                       Insert node type
                     </button>
@@ -2365,6 +2233,13 @@ export default function EdgesAdminPage() {
         )}
 
         {status && <small>{status}</small>}
+        {deleteNodeTarget && (
+          <DeleteNodeDialog
+            node={deleteNodeTarget}
+            onCancel={() => setDeleteNodeTarget(null)}
+            onConfirm={confirmDeleteNode}
+          />
+        )}
       </div>
       <div className="sticky-spacer" style={{ height: stickyHeight }} aria-hidden="true" />
 
@@ -2425,6 +2300,18 @@ export default function EdgesAdminPage() {
                       </span>
                     </button>
                   </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setNodeSort((prev) => nextSort(prev, 'reviews'))}
+                    >
+                      Reviews
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(nodeSort, 'reviews')}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               )}
               {sortedNodes.length === 0 && <small>No nodes found.</small>}
@@ -2438,71 +2325,9 @@ export default function EdgesAdminPage() {
                   <div>{node.name}</div>
                   <div>{node.type}</div>
                   <div>{node.edge_count ?? 0}</div>
+                  <div>{node.review_count ?? 0}</div>
                 </div>
               ))}
-            </div>
-          </>
-        )}
-
-        {activeTab === 'aliases' && (
-          <>
-            <div className="admin-scroll">
-              {sortedAliases.length > 0 && (
-                <div className="row review-footer admin-row admin-row--header admin-row--data-alias">
-                  <div>
-                    <button
-                      type="button"
-                      className="admin-sort"
-                      onClick={() => setAliasSort((prev) => nextSort(prev, 'alias'))}
-                    >
-                      Alias
-                      <span className="admin-sort__indicator">
-                        {sortIndicator(aliasSort, 'alias')}
-                      </span>
-                    </button>
-                  </div>
-                  <div>
-                    <button
-                      type="button"
-                      className="admin-sort"
-                      onClick={() => setAliasSort((prev) => nextSort(prev, 'node'))}
-                    >
-                      Node
-                      <span className="admin-sort__indicator">
-                        {sortIndicator(aliasSort, 'node')}
-                      </span>
-                    </button>
-                  </div>
-                  <div>
-                    <button
-                      type="button"
-                      className="admin-sort"
-                      onClick={() => setAliasSort((prev) => nextSort(prev, 'review_id'))}
-                    >
-                      Review
-                      <span className="admin-sort__indicator">
-                        {sortIndicator(aliasSort, 'review_id')}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              )}
-              {sortedAliases.length === 0 && <small>No aliases found.</small>}
-              {sortedAliases.map((alias) => {
-                const node = nodeMap.get(alias.node_id);
-                const nodeLabel = node ? node.name : alias.node_id;
-                return (
-                  <div
-                    className="row review-footer admin-row admin-row--data admin-row--data-alias admin-row--clickable"
-                    key={alias.id}
-                    onClick={() => startEditAlias(alias)}
-                  >
-                    <div>{alias.alias}</div>
-                    <div>{nodeLabel}</div>
-                    <div>{alias.review_id}</div>
-                  </div>
-                );
-              })}
             </div>
           </>
         )}
@@ -2593,6 +2418,75 @@ export default function EdgesAdminPage() {
           </>
         )}
 
+        {activeTab === 'reviews' && (
+          <>
+            <div className="admin-scroll">
+              {reviews.length > 0 && (
+                <div className="row review-footer admin-row admin-row--header admin-row--data-review">
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setReviewSort((prev) => nextSort(prev, 'node'))}
+                    >
+                      Node
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(reviewSort, 'node')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setReviewSort((prev) => nextSort(prev, 'entity'))}
+                    >
+                      Entity
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(reviewSort, 'entity')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => setReviewSort((prev) => nextSort(prev, 'user'))}
+                    >
+                      User
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(reviewSort, 'user')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>Updated</div>
+                </div>
+              )}
+              {reviews.length === 0 && <small>No reviews found.</small>}
+              {sortedReviews.map((review) => {
+                const nodeName =
+                  (review.node_id ? nodeMap.get(review.node_id)?.name : null) ??
+                  review.node_name ??
+                  '-';
+                return (
+                  <div
+                    className="row review-footer admin-row admin-row--data admin-row--data-review admin-row--clickable"
+                    key={review.id}
+                    onClick={() => startEditReview(review)}
+                  >
+                    <div className="admin-cell-wrap">{nodeName}</div>
+                    <div className="admin-cell-wrap">{review.entity_name}</div>
+                    <div>{review.user_id}</div>
+                    <div>
+                      {formatTimestamp(review.updated_at ?? review.created_at)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
         {activeTab === 'reference' && (
           <>
             <div className="admin-scroll">
@@ -2646,12 +2540,12 @@ export default function EdgesAdminPage() {
                         type="button"
                         className="admin-sort"
                         onClick={() =>
-                          setRelationSort((prev) => nextSort(prev, 'default_weight'))
+                          setRelationSort((prev) => nextSort(prev, 'ui_priority'))
                         }
                       >
-                        Default weight
+                        UI priority
                         <span className="admin-sort__indicator">
-                          {sortIndicator(relationSort, 'default_weight')}
+                          {sortIndicator(relationSort, 'ui_priority')}
                         </span>
                       </button>
                     </div>
@@ -2660,12 +2554,12 @@ export default function EdgesAdminPage() {
                         type="button"
                         className="admin-sort"
                         onClick={() =>
-                          setRelationSort((prev) => nextSort(prev, 'transitive'))
+                          setRelationSort((prev) => nextSort(prev, 'max_suggestions'))
                         }
                       >
-                        Transitive
+                        Max suggestions
                         <span className="admin-sort__indicator">
-                          {sortIndicator(relationSort, 'transitive')}
+                          {sortIndicator(relationSort, 'max_suggestions')}
                         </span>
                       </button>
                     </div>
@@ -2686,16 +2580,18 @@ export default function EdgesAdminPage() {
                         {listToString(relation.allowed_child_types)}
                       </div>
                       <div>
-                        {relation.default_weight === null ? '-' : relation.default_weight}
+                        {relation.ui_priority === null ? '-' : relation.ui_priority}
                       </div>
-                      <div>{relation.is_transitive ? 'Yes' : 'No'}</div>
+                      <div>
+                        {relation.max_suggestions === null ? '-' : relation.max_suggestions}
+                      </div>
                       <div></div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {referenceView === 'priors' && (
+              {referenceView === 'types' && (
                 <div className="admin-group">
                   <div className="row review-footer admin-row admin-row--header admin-row--data-node-type">
                     <div>
@@ -2703,56 +2599,30 @@ export default function EdgesAdminPage() {
                         type="button"
                         className="admin-sort"
                         onClick={() =>
-                          setPriorSort((prev) => nextSort(prev, 'node_type'))
+                          setNodeTypeSort((prev) => nextSort(prev, 'node_type'))
                         }
                       >
                         Node type
                         <span className="admin-sort__indicator">
-                          {sortIndicator(priorSort, 'node_type')}
+                          {sortIndicator(nodeTypeSort, 'node_type')}
                         </span>
                       </button>
                     </div>
                     <div>
-                      <button
-                        type="button"
-                        className="admin-sort"
-                        onClick={() =>
-                          setPriorSort((prev) => nextSort(prev, 'base_prior'))
-                        }
-                      >
-                        Base prior
-                        <span className="admin-sort__indicator">
-                          {sortIndicator(priorSort, 'base_prior')}
-                        </span>
-                      </button>
-                    </div>
-                    <div>
-                      <button
-                        type="button"
-                        className="admin-sort"
-                        onClick={() =>
-                          setPriorSort((prev) => nextSort(prev, 'updated_at'))
-                        }
-                      >
-                        Updated
-                        <span className="admin-sort__indicator">
-                          {sortIndicator(priorSort, 'updated_at')}
-                        </span>
-                      </button>
+                      Description
                     </div>
                   </div>
-                  {sortedNodeTypePriors.length === 0 && (
+                  {sortedNodeTypes.length === 0 && (
                     <small>No node types found.</small>
                   )}
-                  {sortedNodeTypePriors.map((nodeType) => (
+                  {sortedNodeTypes.map((nodeType) => (
                     <div
                       className="row review-footer admin-row admin-row--data admin-row--data-node-type admin-row--clickable"
                       key={nodeType.node_type}
-                      onClick={() => startEditNodeTypePrior(nodeType)}
+                      onClick={() => startEditNodeType(nodeType)}
                     >
                       <div>{nodeType.node_type}</div>
-                      <div>{nodeType.base_prior ?? '-'}</div>
-                      <div>{nodeType.updated_at ?? '-'}</div>
+                      <div>{nodeType.description ?? '-'}</div>
                     </div>
                   ))}
                 </div>

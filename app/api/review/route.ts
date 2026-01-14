@@ -5,8 +5,11 @@ export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  if (!body?.user_id || !body?.password || !body?.content) {
-    return NextResponse.json({ error: 'user_id, password, and content required' }, { status: 400 });
+  if (!body?.user_id || !body?.password || !body?.content || !body?.entity_name) {
+    return NextResponse.json(
+      { error: 'user_id, password, content, and entity_name required' },
+      { status: 400 }
+    );
   }
 
   const db = getDb();
@@ -18,8 +21,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'invalid user credentials' }, { status: 401 });
   }
 
-  const entities: Array<{ name: string; type?: string }> =
-    Array.isArray(body.entities) ? body.entities : [];
+  const entityNameRaw = String(body.entity_name);
+  if (!entityNameRaw.trim()) {
+    return NextResponse.json({ error: 'entity_name required' }, { status: 400 });
+  }
+  const nodeId =
+    body.node_id === null || body.node_id === undefined ? null : Number(body.node_id);
+  if (nodeId !== null && !Number.isFinite(nodeId)) {
+    return NextResponse.json({ error: 'node_id must be a number' }, { status: 400 });
+  }
 
   const tx = db.transaction(() => {
     let userId = userRow?.id;
@@ -32,39 +42,19 @@ export async function POST(request: Request) {
 
     const now = new Date().toISOString();
     const reviewStmt = db.prepare(
-      'INSERT INTO review (user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?)'
+      `INSERT INTO review (user_id, content, node_id, entity_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
     );
-    const reviewResult = reviewStmt.run(userId, body.content, now, now);
-    const reviewId = Number(reviewResult.lastInsertRowid);
-
-    const upsertNodeType = db.prepare(
-      `
-        INSERT OR IGNORE INTO node_type_prior (node_type, base_prior, updated_at)
-        VALUES (?, 0, datetime('now'))
-      `
-    );
-    const insertEntity = db.prepare('INSERT INTO nodes (name, type) VALUES (?, ?)');
-    const selectNode = db.prepare('SELECT id FROM nodes WHERE name = ? AND type = ?');
-    const insertLink = db.prepare(
-      'INSERT OR IGNORE INTO review_entity (review_id, node_id, alias) VALUES (?, ?, ?)'
-    );
-
-    for (const entity of entities) {
-      if (!entity?.name) continue;
-      const alias = entity.name.trim();
-      if (!alias) continue;
-      const normalizedType = entity.type?.trim() || 'default';
-      upsertNodeType.run(normalizedType);
-      const nodeRow = selectNode.get(alias, normalizedType) as { id: number } | undefined;
-      let nodeId = nodeRow?.id;
-      if (!nodeId) {
-        const entityResult = insertEntity.run(alias, normalizedType);
-        nodeId = Number(entityResult.lastInsertRowid);
-      }
-      if (nodeId) {
-        insertLink.run(reviewId, nodeId, alias);
+    if (nodeId !== null) {
+      const nodeRow = db
+        .prepare('SELECT id FROM nodes WHERE id = ?')
+        .get(nodeId) as { id: number } | undefined;
+      if (!nodeRow) {
+        throw new Error('node_id not found');
       }
     }
+    const reviewResult = reviewStmt.run(userId, body.content, nodeId, entityNameRaw, now, now);
+    const reviewId = Number(reviewResult.lastInsertRowid);
 
     return reviewId;
   });
@@ -89,8 +79,11 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
-  if (!body?.user_id || !body?.password || !body?.content) {
-    return NextResponse.json({ error: 'user_id, password, and content required' }, { status: 400 });
+  if (!body?.user_id || !body?.password || !body?.content || !body?.entity_name) {
+    return NextResponse.json(
+      { error: 'user_id, password, content, and entity_name required' },
+      { status: 400 }
+    );
   }
 
   const db = getDb();
@@ -114,51 +107,34 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'review does not belong to user' }, { status: 403 });
   }
 
-  const entities: Array<{ name: string; type?: string }> =
-    Array.isArray(body.entities) ? body.entities : [];
+  const entityNameRaw = String(body.entity_name);
+  if (!entityNameRaw.trim()) {
+    return NextResponse.json({ error: 'entity_name required' }, { status: 400 });
+  }
+  const nodeId =
+    body.node_id === null || body.node_id === undefined ? null : Number(body.node_id);
+  if (nodeId !== null && !Number.isFinite(nodeId)) {
+    return NextResponse.json({ error: 'node_id must be a number' }, { status: 400 });
+  }
 
   const tx = db.transaction(() => {
-    db
-      .prepare('UPDATE review SET content = ?, updated_at = ? WHERE id = ?')
-      .run(body.content, new Date().toISOString(), reviewId);
-    db.prepare(
-      `
-      DELETE FROM review_entity_sentiment
-      WHERE review_entity_id IN (
-        SELECT id FROM review_entity WHERE review_id = ?
-      )
-    `
-    ).run(reviewId);
-    db.prepare('DELETE FROM review_entity WHERE review_id = ?').run(reviewId);
-
-    const upsertNodeType = db.prepare(
-      `
-        INSERT OR IGNORE INTO node_type_prior (node_type, base_prior, updated_at)
-        VALUES (?, 0, datetime('now'))
-      `
-    );
-    const insertEntity = db.prepare('INSERT INTO nodes (name, type) VALUES (?, ?)');
-    const selectNode = db.prepare('SELECT id FROM nodes WHERE name = ? AND type = ?');
-    const insertLink = db.prepare(
-      'INSERT OR IGNORE INTO review_entity (review_id, node_id, alias) VALUES (?, ?, ?)'
-    );
-
-    for (const entity of entities) {
-      if (!entity?.name) continue;
-      const alias = entity.name.trim();
-      if (!alias) continue;
-      const normalizedType = entity.type?.trim() || 'default';
-      upsertNodeType.run(normalizedType);
-      const nodeRow = selectNode.get(alias, normalizedType) as { id: number } | undefined;
-      let nodeId = nodeRow?.id;
-      if (!nodeId) {
-        const entityResult = insertEntity.run(alias, normalizedType);
-        nodeId = Number(entityResult.lastInsertRowid);
-      }
-      if (nodeId) {
-        insertLink.run(reviewId, nodeId, alias);
+    if (nodeId !== null) {
+      const nodeRow = db
+        .prepare('SELECT id FROM nodes WHERE id = ?')
+        .get(nodeId) as { id: number } | undefined;
+      if (!nodeRow) {
+        throw new Error('node_id not found');
       }
     }
+    db
+      .prepare(
+        `
+        UPDATE review
+        SET content = ?, node_id = ?, entity_name = ?, updated_at = ?
+        WHERE id = ?
+      `
+      )
+      .run(body.content, nodeId, entityNameRaw, new Date().toISOString(), reviewId);
   });
 
   try {
@@ -207,15 +183,6 @@ export async function DELETE(request: Request) {
   }
 
   const tx = db.transaction(() => {
-    db.prepare(
-      `
-      DELETE FROM review_entity_sentiment
-      WHERE review_entity_id IN (
-        SELECT id FROM review_entity WHERE review_id = ?
-      )
-    `
-    ).run(reviewId);
-    db.prepare('DELETE FROM review_entity WHERE review_id = ?').run(reviewId);
     db.prepare('DELETE FROM review WHERE id = ?').run(reviewId);
   });
 

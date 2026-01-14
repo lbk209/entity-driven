@@ -9,7 +9,8 @@ type ReviewEditData = {
   id: number;
   user_id: string;
   content: string;
-  entities: string[];
+  entity_name: string;
+  node_id: number | null;
 };
 
 function getReviewForEdit(id: number): ReviewEditData | null {
@@ -18,12 +19,11 @@ function getReviewForEdit(id: number): ReviewEditData | null {
     .prepare(
       `
       SELECT r.id, r.content, u.user_id,
-             GROUP_CONCAT(re.alias, ',') AS entities
+             r.entity_name,
+             r.node_id
       FROM review r
       JOIN user u ON u.id = r.user_id
-      LEFT JOIN review_entity re ON r.id = re.review_id
       WHERE r.id = ?
-      GROUP BY r.id
     `
     )
     .get(id) as
@@ -31,7 +31,8 @@ function getReviewForEdit(id: number): ReviewEditData | null {
         id: number;
         user_id: string;
         content: string;
-        entities: string | null;
+        entity_name: string;
+        node_id: number | null;
       }
     | undefined;
 
@@ -41,7 +42,8 @@ function getReviewForEdit(id: number): ReviewEditData | null {
     id: row.id,
     user_id: row.user_id,
     content: row.content,
-    entities: row.entities ? row.entities.split(',') : []
+    entity_name: row.entity_name,
+    node_id: row.node_id
   };
 }
 
@@ -74,7 +76,8 @@ export default function EditReviewPage({ params }: { params: { id: string } }) {
         initialData={{
           user_id: review.user_id,
           content: review.content,
-          entities: review.entities
+          entity_name: review.entity_name,
+          node_id: review.node_id
         }}
       />
     </>

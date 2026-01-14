@@ -30,7 +30,6 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
   - `app/api/nodes/route.ts`
   - `app/api/nodes/merge/route.ts`
   - `app/api/edges/route.ts`
-  - `app/api/aliases/route.ts`
 - Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/page.tsx`, `app/reviews/[id]/edit/page.tsx`
 - Shared review form: `app/reviews/ReviewForm.tsx`
 - Admin UI: `app/admin/page.tsx`
@@ -58,23 +57,18 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Passwords are plain text (testing only).
 - Review updates record `updated_at` and list sorting uses updated time.
 - Review list shows real user IDs, entity badges, and uses a snap-scrolling list without a section header.
-- Review list can show sentiment emoji (positive/negative only) between entity badges and preview text, derived from latest `review_entity_sentiment` row.
-- Sentiment display gated by `REVIEW_SENTIMENT_CONFIDENCE_MIN` env var on the reviews API.
-- Entity picker uses inline chips, autocomplete suggestions, and a collapse toggle.
-- Review details show entity badges before content with an edit action.
-- Schema now uses canonical `nodes` and `review_entity.alias`.
-- `review_entity` now has its own `id` primary key with `review_id` + `node_id` unique.
-- `review_entity_sentiment` stores raw sentiment analysis outputs per review entity.
-- Search/filter resolves via `review_entity.alias`.
-- Admin page for nodes/edges/aliases management at `/admin` with merge workflow.
+- Entity picker uses autocomplete suggestions and stores the exact user-entered name.
+- Review details show the entity badge before content with an edit action.
+- Reviews store `entity_name` directly with an optional `node_id` anchor.
+- Search/filter resolves via `review.entity_name`.
+- Admin page for nodes/edges/reference management at `/admin` with merge workflow.
 - Review edit supports delete with user/password confirmation.
 - Notebook for data review: `review_app_sqlite.ipynb`.
-- Admin page behavior: tabs for nodes/edges/aliases are a minimal underline style, tabs + active form/search live in a fixed header, edit/insert forms replace the search/insert row, list rows scroll/snap in their own panel, delete requires confirm (stronger if referenced), edit can switch by clicking another row, rows truncate long values for alignment, and edge list columns now keep parent/child widths consistent.
+- Admin page behavior: tabs for nodes/edges/reference are a minimal underline style, tabs + active form/search live in a fixed header, edit/insert forms replace the search/insert row, list rows scroll/snap in their own panel, delete requires confirm (stronger if referenced), edit can switch by clicking another row, rows truncate long values for alignment, and edge list columns now keep parent/child widths consistent.
 - Admin nodes: search filter supports field selection; insert forms keep open after save; draft selects show gray placeholder text; edit cancel buttons are last in row; node type inputs use inline suggestions populated from existing types.
-- Admin aliases: search filter supports alias/node selection; edit row shows read-only review content beneath the controls.
-- Admin edges: search filter supports parent/child/relation selection plus related traversal; related traversal only follows same-relation, transitive paths for indirect edges; insert forms keep open after save; draft parent/child/relation selects use placeholders.
-- Edge relations include allowed parent/child node type lists stored as JSON strings and a `description` field; edge inserts/updates validate parent/child node types against these lists.
-- Admin Reference tab uses radio buttons to switch between edge relations and node type priors views; relation list wraps parent/child types and vertically centers row text; relation edit row supports multi-select type pickers and shows the relation description in a compact textarea below the form row.
+- Admin edges: search filter supports parent/child/relation selection plus related traversal; insert forms keep open after save; draft parent/child/relation selects use placeholders.
+- Edge relations include allowed parent/child node type lists stored as JSON strings, plus description, UI priority, and max suggestions; edge inserts/updates validate parent/child node types against these lists.
+- Admin Reference tab uses radio buttons to switch between edge relations and node types views; relation list wraps parent/child types and vertically centers row text; relation edit row supports multi-select type pickers and shows the relation description in a compact textarea below the form row.
 - Entity Reviews filter: search uses a custom suggestion dropdown with max-height styling; suggestions show on focus and filter as you type.
 
 ## Schema
@@ -90,23 +84,24 @@ CREATE TABLE IF NOT EXISTS review (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   content TEXT NOT NULL,
+  node_id INTEGER,
+  entity_name TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT,
-  FOREIGN KEY (user_id) REFERENCES user(id)
+  FOREIGN KEY (user_id) REFERENCES user(id),
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
 );
 
-CREATE TABLE IF NOT EXISTS node_type_prior (
+CREATE TABLE IF NOT EXISTS node_type (
   node_type TEXT PRIMARY KEY,
-  base_prior REAL,
-  description TEXT,
-  updated_at TEXT
+  description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS edge_relations (
   relation TEXT PRIMARY KEY,
-  is_transitive INTEGER,
-  default_weight REAL,
   description TEXT,
+  ui_priority INTEGER,
+  max_suggestions INTEGER,
   allowed_parent_types TEXT NOT NULL,
   allowed_child_types TEXT NOT NULL
 );
@@ -115,8 +110,12 @@ CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
+  description TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT,
+  updated_at TEXT,
   UNIQUE(name, type),
-  FOREIGN KEY (type) REFERENCES node_type_prior(node_type)
+  FOREIGN KEY (type) REFERENCES node_type(node_type)
 );
 
 CREATE TABLE IF NOT EXISTS edges (
@@ -129,35 +128,24 @@ CREATE TABLE IF NOT EXISTS edges (
   FOREIGN KEY(relation) REFERENCES edge_relations(relation)
 );
 
-CREATE TABLE IF NOT EXISTS review_entity (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS review_sentiment (
   review_id INTEGER NOT NULL,
-  node_id INTEGER NOT NULL,
-  alias TEXT NOT NULL,
-  UNIQUE(review_id, node_id),
-  FOREIGN KEY (review_id) REFERENCES review(id),
-  FOREIGN KEY (node_id) REFERENCES nodes(id)
-);
-
-CREATE TABLE IF NOT EXISTS review_entity_sentiment (
-  review_entity_id INTEGER NOT NULL,
   sentiment_raw REAL NOT NULL,
   confidence REAL NOT NULL,
   method TEXT NOT NULL,
   version TEXT,
   created_at TEXT,
-  PRIMARY KEY (review_entity_id, method, version),
-  FOREIGN KEY (review_entity_id) REFERENCES review_entity(id)
+  PRIMARY KEY (review_id, method, version),
+  FOREIGN KEY (review_id) REFERENCES review(id)
 );
 ```
 
 ## Quick Context (No File Reads Needed)
 
 - Admin UI path: `/admin`
-- Tables: `user`, `review`, `nodes`, `edges`, `review_entity`, `review_entity_sentiment`
-- Sentiment storage is raw-only; labels are computed at read time for UI.
-- Nodes/edges/aliases use the same inline form layout as insert, with Update/Cancel/Delete (aliases are sourced from reviews)
-- Delete confirmation always appears; if referenced by reviews/edges/aliases, message is stronger
+- Tables: `user`, `review`, `review_sentiment`, `nodes`, `edges`, `edge_relations`, `node_type`
+- Nodes/edges use the same inline form layout as insert, with Update/Cancel/Delete.
+- Delete confirmation always appears; if referenced by reviews/edges, message is stronger
 - Merge nodes reassigns reviews and edges in a single transaction
 - Clicking a different row replaces the current edit form
 

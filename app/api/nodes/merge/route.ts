@@ -36,15 +36,9 @@ export async function POST(request: Request) {
   }
 
   const tx = db.transaction(() => {
-    db.prepare(
-      `
-      INSERT OR IGNORE INTO review_entity (review_id, node_id, alias)
-      SELECT review_id, ?, alias
-      FROM review_entity
-      WHERE node_id = ?
-    `
-    ).run(payload.targetId, payload.sourceId);
-    db.prepare('DELETE FROM review_entity WHERE node_id = ?').run(payload.sourceId);
+    db
+      .prepare('UPDATE review SET node_id = ? WHERE node_id = ?')
+      .run(payload.targetId, payload.sourceId);
 
     db.prepare(
       `

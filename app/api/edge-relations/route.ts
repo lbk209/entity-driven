@@ -7,28 +7,24 @@ function parseEdgeRelationPayload(body: unknown) {
   if (!body || typeof body !== 'object') return null;
   const record = body as {
     relation?: string;
-    is_transitive?: number | boolean | string;
-    default_weight?: number | string | null;
     description?: string | null;
+    ui_priority?: number | string | null;
+    max_suggestions?: number | string | null;
     allowed_parent_types?: string[] | string;
     allowed_child_types?: string[] | string;
   };
   const relation = record.relation?.trim();
   if (!relation) return null;
-  const isTransitiveRaw =
-    typeof record.is_transitive === 'boolean'
-      ? record.is_transitive
-        ? 1
-        : 0
-      : Number(record.is_transitive ?? 0);
-  const isTransitive = Number.isFinite(isTransitiveRaw) ? Number(isTransitiveRaw) : 0;
-  const defaultWeightRaw =
-    record.default_weight === '' || record.default_weight === undefined
+  const uiPriorityRaw =
+    record.ui_priority === '' || record.ui_priority === undefined ? null : record.ui_priority;
+  const uiPriority = uiPriorityRaw === null ? null : Number(uiPriorityRaw);
+  if (uiPriority !== null && !Number.isFinite(uiPriority)) return null;
+  const maxSuggestionsRaw =
+    record.max_suggestions === '' || record.max_suggestions === undefined
       ? null
-      : record.default_weight;
-  const defaultWeight =
-    defaultWeightRaw === null ? null : Number(defaultWeightRaw);
-  if (defaultWeight !== null && !Number.isFinite(defaultWeight)) return null;
+      : record.max_suggestions;
+  const maxSuggestions = maxSuggestionsRaw === null ? null : Number(maxSuggestionsRaw);
+  if (maxSuggestions !== null && !Number.isFinite(maxSuggestions)) return null;
   const parseAllowedTypes = (value: string[] | string | undefined) => {
     if (Array.isArray(value)) {
       return value.map((item) => item.trim()).filter((item) => item);
@@ -58,9 +54,9 @@ function parseEdgeRelationPayload(body: unknown) {
   const description = record.description?.trim() || null;
   return {
     relation,
-    isTransitive,
-    defaultWeight,
     description,
+    uiPriority,
+    maxSuggestions,
     allowedParentTypes,
     allowedChildTypes
   };
@@ -71,9 +67,9 @@ function parseEdgeRelationUpdatePayload(body: unknown) {
   const record = body as {
     relation?: string;
     original_relation?: string;
-    is_transitive?: number | boolean | string;
-    default_weight?: number | string | null;
     description?: string | null;
+    ui_priority?: number | string | null;
+    max_suggestions?: number | string | null;
     allowed_parent_types?: string[] | string;
     allowed_child_types?: string[] | string;
   };
@@ -88,7 +84,7 @@ export async function GET() {
   const relations = db
     .prepare(
       `
-      SELECT relation, is_transitive, default_weight, description, allowed_parent_types, allowed_child_types
+      SELECT relation, description, ui_priority, max_suggestions, allowed_parent_types, allowed_child_types
       FROM edge_relations
       ORDER BY relation ASC
     `
@@ -152,9 +148,9 @@ export async function POST(request: Request) {
       `
       INSERT INTO edge_relations (
         relation,
-        is_transitive,
-        default_weight,
         description,
+        ui_priority,
+        max_suggestions,
         allowed_parent_types,
         allowed_child_types
       )
@@ -163,9 +159,9 @@ export async function POST(request: Request) {
     )
     .run(
       payload.relation,
-      payload.isTransitive,
-      payload.defaultWeight,
       payload.description,
+      payload.uiPriority,
+      payload.maxSuggestions,
       JSON.stringify(payload.allowedParentTypes),
       JSON.stringify(payload.allowedChildTypes)
     );
@@ -203,9 +199,9 @@ export async function PUT(request: Request) {
           `
           INSERT INTO edge_relations (
             relation,
-            is_transitive,
-            default_weight,
             description,
+            ui_priority,
+            max_suggestions,
             allowed_parent_types,
             allowed_child_types
           )
@@ -214,9 +210,9 @@ export async function PUT(request: Request) {
         )
         .run(
           payload.relation,
-          payload.isTransitive,
-          payload.defaultWeight,
           payload.description,
+          payload.uiPriority,
+          payload.maxSuggestions,
           JSON.stringify(payload.allowedParentTypes),
           JSON.stringify(payload.allowedChildTypes)
         );
@@ -231,18 +227,18 @@ export async function PUT(request: Request) {
         .prepare(
           `
           UPDATE edge_relations
-          SET is_transitive = ?,
-              default_weight = ?,
-              description = ?,
+          SET description = ?,
+              ui_priority = ?,
+              max_suggestions = ?,
               allowed_parent_types = ?,
               allowed_child_types = ?
           WHERE relation = ?
         `
         )
         .run(
-          payload.isTransitive,
-          payload.defaultWeight,
           payload.description,
+          payload.uiPriority,
+          payload.maxSuggestions,
           JSON.stringify(payload.allowedParentTypes),
           JSON.stringify(payload.allowedChildTypes),
           payload.relation
