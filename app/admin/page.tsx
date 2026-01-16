@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 type NodeOption = {
   id: number;
@@ -31,6 +31,21 @@ type NodeType = {
   node_type: string;
   description: string | null;
 };
+type Taxonomy = {
+  id: number;
+  key: string;
+  value: string;
+  node_type: string;
+  description: string | null;
+};
+type NodeTaxonomy = {
+  node_id: number;
+  taxonomy_id: number;
+  node_name: string;
+  node_type: string;
+  taxonomy_key: string;
+  taxonomy_value: string;
+};
 type ReviewAdmin = {
   id: number;
   node_id: number | null;
@@ -56,11 +71,24 @@ type DraftEdgeRelation = {
   max_suggestions: string;
   allowed_parent_types: string;
   allowed_child_types: string;
+  description: string;
 };
 type DraftNodeType = {
   draftId: string;
   node_type: string;
   description: string;
+};
+type DraftTaxonomy = {
+  draftId: string;
+  key: string;
+  value: string;
+  node_type: string;
+  description: string;
+};
+type DraftNodeTaxonomy = {
+  draftId: string;
+  node_id: number | null;
+  taxonomy_id: number | null;
 };
 type EditNode = NodeOption & { original_id: number };
 type EditEdge = Edge & {
@@ -78,11 +106,73 @@ type EditEdgeRelation = {
   allowed_child_types: string;
 };
 type EditNodeType = NodeType & { original_node_type: string };
+type EditTaxonomy = {
+  id: number;
+  key: string;
+  value: string;
+  node_type: string;
+  description: string;
+};
+type EditNodeTaxonomy = {
+  node_id: number;
+  taxonomy_id: number;
+  original_node_id: number;
+  original_taxonomy_id: number;
+};
 type SortDirection = 'asc' | 'desc';
 type SortState<T extends string> = { key: T; direction: SortDirection };
 
 function listToString(list: string[]) {
   return list.join(', ');
+}
+
+function formatNodeLabel(name: string, type: string) {
+  return `${name} (${type})`;
+}
+
+function formatTaxonomyLabel(key: string, value: string) {
+  return `${key} = ${value}`;
+}
+
+function getNodeTypeById(nodes: NodeOption[], nodeId: number | null) {
+  if (!nodeId) return null;
+  return nodes.find((node) => node.id === nodeId)?.type ?? null;
+}
+
+function highlightText(text: string, term: string) {
+  if (!term) return text;
+  const parts: Array<string | JSX.Element> = [];
+  let startIndex = 0;
+  let matchIndex = 0;
+  while (true) {
+    const index = text.indexOf(term, startIndex);
+    if (index === -1) break;
+    if (index > startIndex) {
+      parts.push(text.slice(startIndex, index));
+    }
+    parts.push(
+      <mark className="admin-review-highlight" key={`match-${matchIndex}`}>
+        {term}
+      </mark>
+    );
+    matchIndex += 1;
+    startIndex = index + term.length;
+  }
+  if (startIndex < text.length) {
+    parts.push(text.slice(startIndex));
+  }
+  return parts.length > 0 ? parts : text;
+}
+
+function getNodeOptionsForSelection(
+  nodes: NodeOption[],
+  filtered: NodeOption[],
+  selectedId: number | null
+) {
+  if (!selectedId) return filtered;
+  if (filtered.some((node) => node.id === selectedId)) return filtered;
+  const selectedNode = nodes.find((node) => node.id === selectedId);
+  return selectedNode ? [selectedNode, ...filtered] : filtered;
 }
 
 function DeleteNodeDialog({
@@ -243,30 +333,49 @@ export default function EdgesAdminPage() {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [edgeRelations, setEdgeRelations] = useState<EdgeRelation[]>([]);
   const [nodeTypes, setNodeTypes] = useState<NodeType[]>([]);
+  const [taxonomy, setTaxonomy] = useState<Taxonomy[]>([]);
+  const [nodeTaxonomy, setNodeTaxonomy] = useState<NodeTaxonomy[]>([]);
   const [reviews, setReviews] = useState<ReviewAdmin[]>([]);
   const [drafts, setDrafts] = useState<DraftEdge[]>([]);
   const [nodeDrafts, setNodeDrafts] = useState<DraftNode[]>([]);
   const [edgeRelationDrafts, setEdgeRelationDrafts] = useState<DraftEdgeRelation[]>([]);
   const [nodeTypeDrafts, setNodeTypeDrafts] = useState<DraftNodeType[]>([]);
+  const [taxonomyDrafts, setTaxonomyDrafts] = useState<DraftTaxonomy[]>([]);
+  const [nodeTaxonomyDrafts, setNodeTaxonomyDrafts] = useState<DraftNodeTaxonomy[]>([]);
   const [editNode, setEditNode] = useState<EditNode | null>(null);
   const [editEdge, setEditEdge] = useState<EditEdge | null>(null);
   const [editEdgeRelation, setEditEdgeRelation] = useState<EditEdgeRelation | null>(null);
   const [editNodeType, setEditNodeType] = useState<EditNodeType | null>(
     null
   );
+  const [editTaxonomy, setEditTaxonomy] = useState<EditTaxonomy | null>(null);
+  const [editNodeTaxonomy, setEditNodeTaxonomy] = useState<EditNodeTaxonomy | null>(
+    null
+  );
   const [editReview, setEditReview] = useState<ReviewAdmin | null>(null);
   const [status, setStatus] = useState('');
   const [deleteNodeTarget, setDeleteNodeTarget] = useState<NodeOption | null>(null);
   const [activeTab, setActiveTab] = useState<
-    'nodes' | 'edges' | 'reviews' | 'reference'
+    'nodes' | 'edges' | 'taxonomy' | 'reviews' | 'reference'
   >('nodes');
-  const [referenceView, setReferenceView] = useState<'relations' | 'types'>('relations');
+  const [referenceView, setReferenceView] = useState<
+    'relations' | 'types' | 'taxonomy'
+  >('relations');
   const [nodeSearch, setNodeSearch] = useState('');
   const [nodeSearchField, setNodeSearchField] = useState<'name' | 'type'>('name');
   const [edgeSearch, setEdgeSearch] = useState('');
   const [edgeSearchField, setEdgeSearchField] = useState<
     'parent' | 'child' | 'relation' | 'related'
   >('parent');
+  const [nodeTaxonomySearch, setNodeTaxonomySearch] = useState('');
+  const [nodeTaxonomySearchField, setNodeTaxonomySearchField] = useState<
+    'node' | 'taxonomy' | 'node_type'
+  >('node');
+  const [reviewSearch, setReviewSearch] = useState('');
+  const [reviewSearchField, setReviewSearchField] = useState<
+    'node' | 'entity' | 'user' | 'review'
+  >('node');
+  const [nodeTaxonomyNodeTypeFilter, setNodeTaxonomyNodeTypeFilter] = useState('');
   const [edgeRelatedSuggestOpen, setEdgeRelatedSuggestOpen] = useState(false);
   const [edgeRelatedSelectedId, setEdgeRelatedSelectedId] = useState<number | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
@@ -297,6 +406,18 @@ export default function EdgesAdminPage() {
     key: 'node_type',
     direction: 'asc'
   });
+  const [taxonomySort, setTaxonomySort] = useState<
+    SortState<'node_type' | 'key' | 'value'>
+  >({
+    key: 'key',
+    direction: 'asc'
+  });
+  const [nodeTaxonomySort, setNodeTaxonomySort] = useState<
+    SortState<'node' | 'taxonomy'>
+  >({
+    key: 'node',
+    direction: 'asc'
+  });
   const [reviewSort, setReviewSort] = useState<
     SortState<'node' | 'entity' | 'user'>
   >({
@@ -322,6 +443,30 @@ export default function EdgesAdminPage() {
     }
     return Array.from(seen).sort((a, b) => a.localeCompare(b));
   }, [nodes, nodeTypes]);
+
+  const nodeOptions = useMemo(() => {
+    const list = [...nodes];
+    list.sort((a, b) => compareText(a.name.toLowerCase(), b.name.toLowerCase()));
+    return list;
+  }, [nodes]);
+
+  const filteredNodeOptions = useMemo(() => {
+    if (!nodeTaxonomyNodeTypeFilter) return nodeOptions;
+    return nodeOptions.filter((node) => node.type === nodeTaxonomyNodeTypeFilter);
+  }, [nodeOptions, nodeTaxonomyNodeTypeFilter]);
+
+  const taxonomyOptions = useMemo(() => {
+    const list = [...taxonomy];
+    list.sort((a, b) => {
+      const labelCompare = compareText(
+        formatTaxonomyLabel(a.key, a.value).toLowerCase(),
+        formatTaxonomyLabel(b.key, b.value).toLowerCase()
+      );
+      if (labelCompare !== 0) return labelCompare;
+      return compareText(a.node_type.toLowerCase(), b.node_type.toLowerCase());
+    });
+    return list;
+  }, [taxonomy]);
 
   const relationOptions = useMemo(() => {
     return edgeRelations
@@ -555,8 +700,53 @@ export default function EdgesAdminPage() {
     return list;
   }, [nodeTypes, nodeTypeSort]);
 
+  const sortedTaxonomy = useMemo(() => {
+    const list = [...taxonomy];
+    const dir = taxonomySort.direction === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (taxonomySort.key === 'node_type') {
+        const nodeTypeCompare =
+          compareText(a.node_type.toLowerCase(), b.node_type.toLowerCase()) * dir;
+        if (nodeTypeCompare !== 0) return nodeTypeCompare;
+      }
+      if (taxonomySort.key === 'value') {
+        const valueCompare =
+          compareText(a.value.toLowerCase(), b.value.toLowerCase()) * dir;
+        if (valueCompare !== 0) return valueCompare;
+      }
+      const keyCompare = compareText(a.key.toLowerCase(), b.key.toLowerCase()) * dir;
+      if (keyCompare !== 0) return keyCompare;
+      const nodeTypeCompare =
+        compareText(a.node_type.toLowerCase(), b.node_type.toLowerCase()) * dir;
+      if (nodeTypeCompare !== 0) return nodeTypeCompare;
+      return compareText(a.value.toLowerCase(), b.value.toLowerCase()) * dir;
+    });
+    return list;
+  }, [taxonomy, taxonomySort]);
+
+  const filteredReviews = useMemo(() => {
+    const term = reviewSearch.trim().toLowerCase();
+    if (!term) return reviews;
+    return reviews.filter((review) => {
+      if (reviewSearchField === 'entity') {
+        return review.entity_name.toLowerCase().includes(term);
+      }
+      if (reviewSearchField === 'user') {
+        return review.user_id.toLowerCase().includes(term);
+      }
+      if (reviewSearchField === 'review') {
+        return review.content.toLowerCase().includes(term);
+      }
+      const nodeName =
+        (review.node_id ? nodeMap.get(review.node_id)?.name : null) ??
+        review.node_name ??
+        '';
+      return nodeName.toLowerCase().includes(term);
+    });
+  }, [nodeMap, reviewSearch, reviewSearchField, reviews]);
+
   const sortedReviews = useMemo(() => {
-    const list = [...reviews];
+    const list = [...filteredReviews];
     const dir = reviewSort.direction === 'asc' ? 1 : -1;
     list.sort((a, b) => {
       if (reviewSort.key === 'entity') {
@@ -572,7 +762,47 @@ export default function EdgesAdminPage() {
       return compareText(aNode.toLowerCase(), bNode.toLowerCase()) * dir;
     });
     return list;
-  }, [nodeMap, reviewSort, reviews]);
+  }, [filteredReviews, nodeMap, reviewSort]);
+
+  const filteredNodeTaxonomy = useMemo(() => {
+    const term = nodeTaxonomySearch.trim().toLowerCase();
+    if (!term) return nodeTaxonomy;
+    return nodeTaxonomy.filter((entry) => {
+      if (nodeTaxonomySearchField === 'taxonomy') {
+        return formatTaxonomyLabel(entry.taxonomy_key, entry.taxonomy_value)
+          .toLowerCase()
+          .includes(term);
+      }
+      if (nodeTaxonomySearchField === 'node_type') {
+        return entry.node_type.toLowerCase().includes(term);
+      }
+      return formatNodeLabel(entry.node_name, entry.node_type)
+        .toLowerCase()
+        .includes(term);
+    });
+  }, [nodeTaxonomy, nodeTaxonomySearch, nodeTaxonomySearchField]);
+
+  const sortedNodeTaxonomy = useMemo(() => {
+    const list = [...filteredNodeTaxonomy];
+    const dir = nodeTaxonomySort.direction === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (nodeTaxonomySort.key === 'taxonomy') {
+        return (
+          compareText(
+            formatTaxonomyLabel(a.taxonomy_key, a.taxonomy_value).toLowerCase(),
+            formatTaxonomyLabel(b.taxonomy_key, b.taxonomy_value).toLowerCase()
+          ) * dir
+        );
+      }
+      return (
+        compareText(
+          formatNodeLabel(a.node_name, a.node_type).toLowerCase(),
+          formatNodeLabel(b.node_name, b.node_type).toLowerCase()
+        ) * dir
+      );
+    });
+    return list;
+  }, [filteredNodeTaxonomy, nodeTaxonomySort]);
 
   async function loadReviews() {
     const res = await fetch('/api/admin/reviews');
@@ -624,6 +854,26 @@ export default function EdgesAdminPage() {
     loadNodeTypes().catch(() => setNodeTypes([]));
   }, []);
 
+  async function loadTaxonomy() {
+    const res = await fetch('/api/taxonomy');
+    const data = await res.json().catch(() => ({}));
+    setTaxonomy(data.taxonomy || []);
+  }
+
+  useEffect(() => {
+    loadTaxonomy().catch(() => setTaxonomy([]));
+  }, []);
+
+  async function loadNodeTaxonomy() {
+    const res = await fetch('/api/node-taxonomy');
+    const data = await res.json().catch(() => ({}));
+    setNodeTaxonomy(data.node_taxonomy || []);
+  }
+
+  useEffect(() => {
+    loadNodeTaxonomy().catch(() => setNodeTaxonomy([]));
+  }, []);
+
   useEffect(() => {
     const stickyNode = stickyRef.current;
     if (!stickyNode) return;
@@ -668,7 +918,8 @@ export default function EdgesAdminPage() {
       ui_priority: '',
       max_suggestions: '',
       allowed_parent_types: '',
-      allowed_child_types: ''
+      allowed_child_types: '',
+      description: ''
     };
     setEdgeRelationDrafts((prev) => [...prev, draft]);
     setStatus('');
@@ -682,6 +933,38 @@ export default function EdgesAdminPage() {
       description: ''
     };
     setNodeTypeDrafts((prev) => [...prev, draft]);
+    setStatus('');
+  }
+
+  function addTaxonomyDraft() {
+    if (taxonomyDrafts.length > 0 || editTaxonomy) return;
+    const draft: DraftTaxonomy = {
+      draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      key: '',
+      value: '',
+      node_type: '',
+      description: ''
+    };
+    setTaxonomyDrafts((prev) => [...prev, draft]);
+    setStatus('');
+  }
+
+  function addNodeTaxonomyDraft() {
+    if (nodeTaxonomyDrafts.length > 0 || editNodeTaxonomy) return;
+    if (nodes.length === 0) {
+      setStatus('Add nodes first so taxonomy links can reference them.');
+      return;
+    }
+    if (taxonomy.length === 0) {
+      setStatus('Add taxonomy entries first so links can reference them.');
+      return;
+    }
+    const draft: DraftNodeTaxonomy = {
+      draftId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      node_id: null,
+      taxonomy_id: null
+    };
+    setNodeTaxonomyDrafts((prev) => [...prev, draft]);
     setStatus('');
   }
 
@@ -740,6 +1023,25 @@ export default function EdgesAdminPage() {
     );
   }
 
+  function updateTaxonomyDraft(draftId: string, next: Partial<DraftTaxonomy>) {
+    setTaxonomyDrafts((prev) =>
+      prev.map((draft) =>
+        draft.draftId === draftId ? { ...draft, ...next } : draft
+      )
+    );
+  }
+
+  function updateNodeTaxonomyDraft(
+    draftId: string,
+    next: Partial<DraftNodeTaxonomy>
+  ) {
+    setNodeTaxonomyDrafts((prev) =>
+      prev.map((draft) =>
+        draft.draftId === draftId ? { ...draft, ...next } : draft
+      )
+    );
+  }
+
   function updateEditNode(next: Partial<NodeOption>) {
     setEditNode((prev) => (prev ? { ...prev, ...next } : prev));
   }
@@ -754,6 +1056,14 @@ export default function EdgesAdminPage() {
 
   function updateEditNodeType(next: Partial<NodeType>) {
     setEditNodeType((prev) => (prev ? { ...prev, ...next } : prev));
+  }
+
+  function updateEditTaxonomy(next: Partial<EditTaxonomy>) {
+    setEditTaxonomy((prev) => (prev ? { ...prev, ...next } : prev));
+  }
+
+  function updateEditNodeTaxonomy(next: Partial<EditNodeTaxonomy>) {
+    setEditNodeTaxonomy((prev) => (prev ? { ...prev, ...next } : prev));
   }
 
   async function saveNodeDraft(draft: DraftNode) {
@@ -810,6 +1120,7 @@ export default function EdgesAdminPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         relation: draft.relation,
+        description: draft.description,
         ui_priority: uiPriorityValue,
         max_suggestions: maxSuggestionsValue,
         allowed_parent_types: allowedParentTypes,
@@ -827,6 +1138,7 @@ export default function EdgesAdminPage() {
           ? {
               ...item,
               relation: '',
+              description: '',
               ui_priority: '',
               max_suggestions: '',
               allowed_parent_types: '',
@@ -867,6 +1179,70 @@ export default function EdgesAdminPage() {
     await loadNodeTypes();
   }
 
+  async function saveTaxonomyDraft(draft: DraftTaxonomy) {
+    setStatus('');
+    if (!draft.node_type.trim()) {
+      setStatus('Node type is required.');
+      return;
+    }
+    if (!draft.key.trim() || !draft.value.trim()) {
+      setStatus('Key and value are required.');
+      return;
+    }
+    const res = await fetch('/api/taxonomy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: draft.key,
+        value: draft.value,
+        node_type: draft.node_type,
+        description: draft.description
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to insert taxonomy.');
+      return;
+    }
+    setTaxonomyDrafts((prev) =>
+      prev.map((item) =>
+        item.draftId === draft.draftId
+          ? { ...item, key: '', value: '', node_type: '', description: '' }
+          : item
+      )
+    );
+    await loadTaxonomy();
+  }
+
+  async function saveNodeTaxonomyDraft(draft: DraftNodeTaxonomy) {
+    setStatus('');
+    if (!draft.node_id || !draft.taxonomy_id) {
+      setStatus('Select a node and taxonomy entry.');
+      return;
+    }
+    const res = await fetch('/api/node-taxonomy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        node_id: draft.node_id,
+        taxonomy_id: draft.taxonomy_id
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to insert taxonomy link.');
+      return;
+    }
+    setNodeTaxonomyDrafts((prev) =>
+      prev.map((item) =>
+        item.draftId === draft.draftId
+          ? { ...item, node_id: null, taxonomy_id: null }
+          : item
+      )
+    );
+    await loadNodeTaxonomy();
+  }
+
   async function saveEditNode(node: EditNode) {
     setStatus('');
     const res = await fetch('/api/nodes', {
@@ -888,6 +1264,7 @@ export default function EdgesAdminPage() {
     await loadNodes();
     await loadNodeTypes();
     await loadEdges();
+    await loadNodeTaxonomy();
   }
 
   async function saveEditEdgeRelation(relation: EditEdgeRelation) {
@@ -955,6 +1332,62 @@ export default function EdgesAdminPage() {
     await loadEdges();
   }
 
+  async function saveEditTaxonomy(entry: EditTaxonomy) {
+    setStatus('');
+    if (!entry.node_type.trim()) {
+      setStatus('Node type is required.');
+      return;
+    }
+    if (!entry.key.trim() || !entry.value.trim()) {
+      setStatus('Key and value are required.');
+      return;
+    }
+    const res = await fetch('/api/taxonomy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: entry.id,
+        key: entry.key,
+        value: entry.value,
+        node_type: entry.node_type,
+        description: entry.description
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to update taxonomy.');
+      return;
+    }
+    setEditTaxonomy(null);
+    await loadTaxonomy();
+    await loadNodeTaxonomy();
+  }
+
+  async function saveEditNodeTaxonomy(entry: EditNodeTaxonomy) {
+    setStatus('');
+    if (!entry.node_id || !entry.taxonomy_id) {
+      setStatus('Select a node and taxonomy entry.');
+      return;
+    }
+    const res = await fetch('/api/node-taxonomy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        node_id: entry.node_id,
+        taxonomy_id: entry.taxonomy_id,
+        original_node_id: entry.original_node_id,
+        original_taxonomy_id: entry.original_taxonomy_id
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to update taxonomy link.');
+      return;
+    }
+    setEditNodeTaxonomy(null);
+    await loadNodeTaxonomy();
+  }
+
   async function saveEditReview(review: ReviewAdmin) {
     setStatus('');
     const res = await fetch('/api/admin/reviews', {
@@ -1008,6 +1441,7 @@ export default function EdgesAdminPage() {
     setDeleteNodeTarget(null);
     await loadNodes();
     await loadEdges();
+    await loadNodeTaxonomy();
   }
 
   async function saveDraft(draft: DraftEdge) {
@@ -1055,6 +1489,14 @@ export default function EdgesAdminPage() {
 
   function removeNodeTypeDraft(draftId: string) {
     setNodeTypeDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
+  }
+
+  function removeTaxonomyDraft(draftId: string) {
+    setTaxonomyDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
+  }
+
+  function removeNodeTaxonomyDraft(draftId: string) {
+    setNodeTaxonomyDrafts((prev) => prev.filter((item) => item.draftId !== draftId));
   }
 
   function startEditNode(node: NodeOption) {
@@ -1127,8 +1569,37 @@ export default function EdgesAdminPage() {
     });
   }
 
+  function startEditTaxonomy(entry: Taxonomy) {
+    if (taxonomyDrafts.length > 0) return;
+    setEditTaxonomy({
+      id: entry.id,
+      key: entry.key,
+      value: entry.value,
+      node_type: entry.node_type,
+      description: entry.description ?? ''
+    });
+  }
+
+  function startEditNodeTaxonomy(entry: NodeTaxonomy) {
+    if (nodeTaxonomyDrafts.length > 0) return;
+    setEditNodeTaxonomy({
+      node_id: entry.node_id,
+      taxonomy_id: entry.taxonomy_id,
+      original_node_id: entry.node_id,
+      original_taxonomy_id: entry.taxonomy_id
+    });
+  }
+
   function cancelEditNodeType() {
     setEditNodeType(null);
+  }
+
+  function cancelEditTaxonomy() {
+    setEditTaxonomy(null);
+  }
+
+  function cancelEditNodeTaxonomy() {
+    setEditNodeTaxonomy(null);
   }
 
   async function deleteEdgeRelation(relation: EdgeRelation) {
@@ -1166,6 +1637,43 @@ export default function EdgesAdminPage() {
     await loadNodeTypes();
     await loadNodes();
     await loadEdges();
+  }
+
+  async function deleteTaxonomy(entry: { id: number }) {
+    setStatus('');
+    if (!window.confirm('Delete this taxonomy entry?')) return;
+    const res = await fetch('/api/taxonomy', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: entry.id })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to delete taxonomy.');
+      return;
+    }
+    setEditTaxonomy(null);
+    await loadTaxonomy();
+  }
+
+  async function deleteNodeTaxonomy(entry: { node_id: number; taxonomy_id: number }) {
+    setStatus('');
+    if (!window.confirm('Delete this taxonomy link?')) return;
+    const res = await fetch('/api/node-taxonomy', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        node_id: entry.node_id,
+        taxonomy_id: entry.taxonomy_id
+      })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error || 'Failed to delete taxonomy link.');
+      return;
+    }
+    setEditNodeTaxonomy(null);
+    await loadNodeTaxonomy();
   }
 
   async function saveEditEdge(edge: EditEdge) {
@@ -1261,6 +1769,15 @@ export default function EdgesAdminPage() {
             onClick={() => setActiveTab('edges')}
           >
             <strong>Edges</strong>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'taxonomy'}
+            className={`admin-tab ${activeTab === 'taxonomy' ? 'admin-tab--active' : ''}`}
+            onClick={() => setActiveTab('taxonomy')}
+          >
+            <strong>Taxonomy</strong>
           </button>
           <button
             type="button"
@@ -1485,7 +2002,7 @@ export default function EdgesAdminPage() {
                   onClick={addNodeDraft}
                   disabled={nodeDrafts.length > 0 || !!editNode}
                 >
-                  Insert node
+                  Insert new
                 </button>
               </div>
             )}
@@ -1791,7 +2308,249 @@ export default function EdgesAdminPage() {
                   onClick={addDraftRow}
                   disabled={drafts.length > 0 || !!editEdge}
                 >
-                  Insert edge
+                  Insert new
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'taxonomy' && (
+          <>
+            {editNodeTaxonomy ? (
+              <div className="admin-toolbar">
+                  <select
+                    className="admin-toolbar__select"
+                    aria-label="Filter nodes by type"
+                    value={nodeTaxonomyNodeTypeFilter}
+                    onChange={(event) =>
+                      setNodeTaxonomyNodeTypeFilter(event.target.value)
+                    }
+                  >
+                    <option value="">All node types</option>
+                    {nodeTypeOptions.map((nodeType) => (
+                      <option key={nodeType} value={nodeType}>
+                        {nodeType}
+                      </option>
+                    ))}
+                  </select>
+                <div className="row review-footer admin-row admin-row--form admin-row--form-node-taxonomy admin-form">
+                <div>
+                  <select
+                    aria-label="Node"
+                    value={editNodeTaxonomy.node_id}
+                    onChange={(event) =>
+                      (() => {
+                        const nextNodeId = Number(event.target.value);
+                        const nextNodeType = getNodeTypeById(nodes, nextNodeId);
+                        const currentTaxonomy = taxonomy.find(
+                          (entry) => entry.id === editNodeTaxonomy.taxonomy_id
+                        );
+                        updateEditNodeTaxonomy({
+                          node_id: nextNodeId,
+                          taxonomy_id:
+                            currentTaxonomy && currentTaxonomy.node_type === nextNodeType
+                              ? editNodeTaxonomy.taxonomy_id
+                              : 0
+                        });
+                      })()
+                    }
+                  >
+                    {getNodeOptionsForSelection(
+                      nodes,
+                      filteredNodeOptions,
+                      editNodeTaxonomy.node_id
+                    ).map((node) => (
+                      <option key={node.id} value={node.id}>
+                        {formatNodeLabel(node.name, node.type)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <select
+                    aria-label="Taxonomy"
+                    className={editNodeTaxonomy.taxonomy_id ? '' : 'admin-select--placeholder'}
+                    value={editNodeTaxonomy.taxonomy_id}
+                    onChange={(event) =>
+                      updateEditNodeTaxonomy({
+                        taxonomy_id: Number(event.target.value)
+                      })
+                    }
+                  >
+                    <option value={0} disabled>
+                      Select taxonomy
+                    </option>
+                    {taxonomyOptions
+                      .filter((entry) => {
+                        const nodeType = getNodeTypeById(
+                          nodes,
+                          editNodeTaxonomy.node_id
+                        );
+                        return nodeType ? entry.node_type === nodeType : false;
+                      })
+                      .map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {formatTaxonomyLabel(entry.key, entry.value)}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div className="admin-row__actions admin-row__actions--form">
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      onClick={() => saveEditNodeTaxonomy(editNodeTaxonomy)}
+                    >
+                      Update
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteNodeTaxonomy(editNodeTaxonomy)}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      className="button-link button-link--ghost"
+                      onClick={cancelEditNodeTaxonomy}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+              </div>
+            ) : nodeTaxonomyDrafts.length > 0 ? (
+              nodeTaxonomyDrafts.map((draft) => (
+                <div className="admin-toolbar" key={draft.draftId}>
+                    <select
+                      className="admin-toolbar__select"
+                      aria-label="Filter nodes by type"
+                      value={nodeTaxonomyNodeTypeFilter}
+                      onChange={(event) =>
+                        setNodeTaxonomyNodeTypeFilter(event.target.value)
+                      }
+                    >
+                      <option value="">All node types</option>
+                      {nodeTypeOptions.map((nodeType) => (
+                        <option key={nodeType} value={nodeType}>
+                          {nodeType}
+                        </option>
+                      ))}
+                    </select>
+                <div
+                  className="row review-footer admin-row admin-row--form admin-row--form-node-taxonomy admin-form"
+                >
+                  <div>
+                    <select
+                      className={draft.node_id ? '' : 'admin-select--placeholder'}
+                      aria-label="Node"
+                      value={draft.node_id ?? ''}
+                      onChange={(event) =>
+                        (() => {
+                          const nextNodeId = event.target.value
+                            ? Number(event.target.value)
+                            : null;
+                          const nextNodeType = getNodeTypeById(nodes, nextNodeId);
+                          const currentTaxonomy = taxonomy.find(
+                            (entry) => entry.id === draft.taxonomy_id
+                          );
+                          updateNodeTaxonomyDraft(draft.draftId, {
+                            node_id: nextNodeId,
+                            taxonomy_id:
+                              currentTaxonomy && currentTaxonomy.node_type === nextNodeType
+                                ? draft.taxonomy_id
+                                : null
+                          });
+                        })()
+                      }
+                    >
+                      <option value="">Select node</option>
+                      {getNodeOptionsForSelection(
+                        nodes,
+                        filteredNodeOptions,
+                        draft.node_id
+                      ).map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {formatNodeLabel(node.name, node.type)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <select
+                      className={draft.taxonomy_id ? '' : 'admin-select--placeholder'}
+                      aria-label="Taxonomy"
+                      value={draft.taxonomy_id ?? ''}
+                      onChange={(event) =>
+                        updateNodeTaxonomyDraft(draft.draftId, {
+                          taxonomy_id: event.target.value
+                            ? Number(event.target.value)
+                            : null
+                        })
+                      }
+                    >
+                      <option value="">Select taxonomy</option>
+                      {taxonomyOptions
+                        .filter((entry) => {
+                          const nodeType = getNodeTypeById(nodes, draft.node_id);
+                          return nodeType ? entry.node_type === nodeType : false;
+                        })
+                        .map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {formatTaxonomyLabel(entry.key, entry.value)}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div className="admin-row__actions admin-row__actions--form">
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        onClick={() => saveNodeTaxonomyDraft(draft)}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="button-link button-link--ghost"
+                        onClick={() => removeNodeTaxonomyDraft(draft.draftId)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                </div>
+              ))
+            ) : (
+              <div className="admin-toolbar">
+                <select
+                  className="admin-toolbar__select"
+                  aria-label="Filter taxonomy search field"
+                  value={nodeTaxonomySearchField}
+                  onChange={(event) =>
+                    setNodeTaxonomySearchField(
+                      event.target.value as 'node' | 'taxonomy' | 'node_type'
+                    )
+                  }
+                >
+                  <option value="node">Node</option>
+                  <option value="taxonomy">Taxonomy</option>
+                  <option value="node_type">Node type</option>
+                </select>
+                <input
+                  placeholder="Search taxonomy links"
+                  value={nodeTaxonomySearch}
+                  onChange={(event) => setNodeTaxonomySearch(event.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={addNodeTaxonomyDraft}
+                  disabled={nodeTaxonomyDrafts.length > 0 || !!editNodeTaxonomy}
+                >
+                  Insert new
                 </button>
               </div>
             )}
@@ -1868,18 +2627,36 @@ export default function EdgesAdminPage() {
                   </div>
                 </div>
                 <div className="admin-form">
-                  <textarea
-                    className="admin-textarea--compact admin-textarea--readonly"
+                  <div
+                    className="admin-review-content admin-textarea--compact admin-textarea--readonly"
                     aria-label="Review content"
-                    rows={4}
-                    value={editReview.content}
-                    disabled
-                  />
+                  >
+                    {highlightText(editReview.content, reviewSearch.trim())}
+                  </div>
                 </div>
               </>
             ) : (
               <div className="admin-toolbar">
-                <small>Click a review to view details.</small>
+                <select
+                  className="admin-toolbar__select"
+                  aria-label="Filter review search field"
+                  value={reviewSearchField}
+                  onChange={(event) =>
+                    setReviewSearchField(
+                      event.target.value as 'node' | 'entity' | 'user' | 'review'
+                    )
+                  }
+                >
+                  <option value="node">Node</option>
+                  <option value="entity">Entity</option>
+                  <option value="user">User</option>
+                  <option value="review">Review</option>
+                </select>
+                <input
+                  placeholder="Search reviews"
+                  value={reviewSearch}
+                  onChange={(event) => setReviewSearch(event.target.value)}
+                />
               </div>
             )}
           </>
@@ -1888,6 +2665,15 @@ export default function EdgesAdminPage() {
         {activeTab === 'reference' && (
           <>
             <div className="admin-toolbar admin-toolbar--reference">
+              <label className="admin-radio-label">
+                <input
+                  type="radio"
+                  name="reference-view"
+                  checked={referenceView === 'types'}
+                  onChange={() => setReferenceView('types')}
+                />
+                <span>Node types</span>
+              </label>
               <label className="admin-radio-label">
                 <input
                   type="radio"
@@ -1901,12 +2687,119 @@ export default function EdgesAdminPage() {
                 <input
                   type="radio"
                   name="reference-view"
-                  checked={referenceView === 'types'}
-                  onChange={() => setReferenceView('types')}
+                  checked={referenceView === 'taxonomy'}
+                  onChange={() => setReferenceView('taxonomy')}
                 />
-                <span>Node types</span>
+                <span>Taxonomy types</span>
               </label>
             </div>
+
+            {referenceView === 'types' && (
+              <>
+                {editNodeType ? (
+                  <>
+                    <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
+                      <div>
+                        <input
+                          aria-label="Node type"
+                          placeholder="Node type"
+                          value={editNodeType.node_type}
+                          onChange={(event) =>
+                            updateEditNodeType({ node_type: event.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="admin-row__actions admin-row__actions--form">
+                        <div className="button-row">
+                          <button type="button" onClick={() => saveEditNodeType(editNodeType)}>
+                            Update
+                          </button>
+                          <button type="button" onClick={() => deleteNodeType(editNodeType)}>
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            className="button-link button-link--ghost"
+                            onClick={cancelEditNodeType}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="admin-form">
+                      <textarea
+                        className="admin-textarea--compact"
+                        aria-label="Node type description"
+                        placeholder="Description"
+                        rows={2}
+                        value={editNodeType.description ?? ''}
+                        onChange={(event) =>
+                          updateEditNodeType({ description: event.target.value })
+                        }
+                      />
+                    </div>
+                  </>
+                ) : nodeTypeDrafts.length > 0 ? (
+                  nodeTypeDrafts.map((draft) => (
+                    <Fragment key={draft.draftId}>
+                      <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
+                        <div>
+                          <input
+                            aria-label="Node type"
+                            placeholder="Node type"
+                            value={draft.node_type}
+                            onChange={(event) =>
+                              updateNodeTypeDraft(draft.draftId, {
+                                node_type: event.target.value
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="admin-row__actions admin-row__actions--form">
+                          <div className="button-row">
+                            <button type="button" onClick={() => saveNodeTypeDraft(draft)}>
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="button-link button-link--ghost"
+                              onClick={() => removeNodeTypeDraft(draft.draftId)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="admin-form">
+                        <textarea
+                          className="admin-textarea--compact"
+                          aria-label="Node type description"
+                          placeholder="Description"
+                          rows={2}
+                          value={draft.description}
+                          onChange={(event) =>
+                            updateNodeTypeDraft(draft.draftId, {
+                              description: event.target.value
+                            })
+                          }
+                        />
+                      </div>
+                    </Fragment>
+                  ))
+                ) : (
+                  <div className="admin-toolbar">
+                    <button
+                      type="button"
+                      onClick={addNodeTypeDraft}
+                      disabled={nodeTypeDrafts.length > 0 || !!editNodeType}
+                    >
+                      Insert new
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
 
             {referenceView === 'relations' && (
               <>
@@ -2020,180 +2913,86 @@ export default function EdgesAdminPage() {
                   </>
                 ) : edgeRelationDrafts.length > 0 ? (
                   edgeRelationDrafts.map((draft) => (
-                    <div
-                      className="row review-footer admin-row admin-row--form admin-row--form-relation admin-form"
-                      key={draft.draftId}
-                    >
-                      <div>
-                        <TypeMultiSelect
-                          ariaLabel="Allowed parent types"
-                          placeholder="Select parent types"
-                          options={nodeTypeOptions}
-                          value={draft.allowed_parent_types}
-                          onChange={(nextValue) =>
-                            updateEdgeRelationDraft(draft.draftId, {
-                              allowed_parent_types: nextValue
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <input
-                          aria-label="Relation"
-                          placeholder="Relation"
-                          value={draft.relation}
-                          onChange={(event) =>
-                            updateEdgeRelationDraft(draft.draftId, {
-                              relation: event.target.value
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <TypeMultiSelect
-                          ariaLabel="Allowed child types"
-                          placeholder="Select child types"
-                          options={nodeTypeOptions}
-                          value={draft.allowed_child_types}
-                          onChange={(nextValue) =>
-                            updateEdgeRelationDraft(draft.draftId, {
-                              allowed_child_types: nextValue
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <input
-                          aria-label="UI priority"
-                          placeholder="UI priority"
-                          type="number"
-                          step="1"
-                          value={draft.ui_priority}
-                          onChange={(event) =>
-                            updateEdgeRelationDraft(draft.draftId, {
-                              ui_priority: event.target.value
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <input
-                          aria-label="Max suggestions"
-                          placeholder="Max suggestions"
-                          type="number"
-                          step="1"
-                          value={draft.max_suggestions}
-                          onChange={(event) =>
-                            updateEdgeRelationDraft(draft.draftId, {
-                              max_suggestions: event.target.value
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="admin-row__actions admin-row__actions--form">
-                        <div className="button-row">
-                          <button
-                            type="button"
-                            onClick={() => saveEdgeRelationDraft(draft)}
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            className="button-link button-link--ghost"
-                            onClick={() => removeEdgeRelationDraft(draft.draftId)}
-                          >
-                            Cancel
-                          </button>
+                    <Fragment key={draft.draftId}>
+                      <div className="row review-footer admin-row admin-row--form admin-row--form-relation admin-form">
+                        <div>
+                          <TypeMultiSelect
+                            ariaLabel="Allowed parent types"
+                            placeholder="Select parent types"
+                            options={nodeTypeOptions}
+                            value={draft.allowed_parent_types}
+                            onChange={(nextValue) =>
+                              updateEdgeRelationDraft(draft.draftId, {
+                                allowed_parent_types: nextValue
+                              })
+                            }
+                          />
                         </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="admin-toolbar">
-                    <button
-                      type="button"
-                      onClick={addEdgeRelationDraft}
-                      disabled={edgeRelationDrafts.length > 0 || !!editEdgeRelation}
-                    >
-                      Insert relation
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {referenceView === 'types' && (
-              <>
-                {editNodeType ? (
-                  <>
-                    <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
-                      <div>
-                        <input
-                          aria-label="Node type"
-                          placeholder="Node type"
-                          value={editNodeType.node_type}
-                          onChange={(event) =>
-                            updateEditNodeType({ node_type: event.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="admin-row__actions admin-row__actions--form">
-                        <div className="button-row">
-                          <button type="button" onClick={() => saveEditNodeType(editNodeType)}>
-                            Update
-                          </button>
-                          <button type="button" onClick={() => deleteNodeType(editNodeType)}>
-                            Delete
-                          </button>
-                          <button
-                            type="button"
-                            className="button-link button-link--ghost"
-                            onClick={cancelEditNodeType}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="admin-form">
-                      <textarea
-                        className="admin-textarea--compact"
-                        aria-label="Node type description"
-                        placeholder="Description"
-                        rows={2}
-                        value={editNodeType.description ?? ''}
-                        onChange={(event) =>
-                          updateEditNodeType({ description: event.target.value })
-                        }
-                      />
-                    </div>
-                  </>
-                ) : nodeTypeDrafts.length > 0 ? (
-                  nodeTypeDrafts.map((draft) => (
-                    <div key={draft.draftId}>
-                      <div className="row review-footer admin-row admin-row--form admin-row--form-node-type admin-form">
                         <div>
                           <input
-                            aria-label="Node type"
-                            placeholder="Node type"
-                            value={draft.node_type}
+                            aria-label="Relation"
+                            placeholder="Relation"
+                            value={draft.relation}
                             onChange={(event) =>
-                              updateNodeTypeDraft(draft.draftId, {
-                                node_type: event.target.value
+                              updateEdgeRelationDraft(draft.draftId, {
+                                relation: event.target.value
+                              })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <TypeMultiSelect
+                            ariaLabel="Allowed child types"
+                            placeholder="Select child types"
+                            options={nodeTypeOptions}
+                            value={draft.allowed_child_types}
+                            onChange={(nextValue) =>
+                              updateEdgeRelationDraft(draft.draftId, {
+                                allowed_child_types: nextValue
+                              })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <input
+                            aria-label="UI priority"
+                            placeholder="UI priority"
+                            type="number"
+                            step="1"
+                            value={draft.ui_priority}
+                            onChange={(event) =>
+                              updateEdgeRelationDraft(draft.draftId, {
+                                ui_priority: event.target.value
+                              })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <input
+                            aria-label="Max suggestions"
+                            placeholder="Max suggestions"
+                            type="number"
+                            step="1"
+                            value={draft.max_suggestions}
+                            onChange={(event) =>
+                              updateEdgeRelationDraft(draft.draftId, {
+                                max_suggestions: event.target.value
                               })
                             }
                           />
                         </div>
                         <div className="admin-row__actions admin-row__actions--form">
                           <div className="button-row">
-                            <button type="button" onClick={() => saveNodeTypeDraft(draft)}>
+                            <button
+                              type="button"
+                              onClick={() => saveEdgeRelationDraft(draft)}
+                            >
                               Save
                             </button>
                             <button
                               type="button"
                               className="button-link button-link--ghost"
-                              onClick={() => removeNodeTypeDraft(draft.draftId)}
+                              onClick={() => removeEdgeRelationDraft(draft.draftId)}
                             >
                               Cancel
                             </button>
@@ -2203,27 +3002,207 @@ export default function EdgesAdminPage() {
                       <div className="admin-form">
                         <textarea
                           className="admin-textarea--compact"
-                          aria-label="Node type description"
+                          aria-label="Relation description"
                           placeholder="Description"
                           rows={2}
                           value={draft.description}
                           onChange={(event) =>
-                            updateNodeTypeDraft(draft.draftId, {
+                            updateEdgeRelationDraft(draft.draftId, {
                               description: event.target.value
                             })
                           }
                         />
                       </div>
-                    </div>
+                    </Fragment>
                   ))
                 ) : (
                   <div className="admin-toolbar">
                     <button
                       type="button"
-                      onClick={addNodeTypeDraft}
-                      disabled={nodeTypeDrafts.length > 0 || !!editNodeType}
+                      onClick={addEdgeRelationDraft}
+                      disabled={edgeRelationDrafts.length > 0 || !!editEdgeRelation}
                     >
-                      Insert node type
+                      Insert new
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {referenceView === 'taxonomy' && (
+              <>
+                {editTaxonomy ? (
+                  <>
+                    <div className="row review-footer admin-row admin-row--form admin-row--form-taxonomy admin-form">
+                      <div>
+                        <select
+                          aria-label="Node type"
+                          className={
+                            editTaxonomy.node_type ? '' : 'admin-select--placeholder'
+                          }
+                          value={editTaxonomy.node_type}
+                          onChange={(event) =>
+                            updateEditTaxonomy({ node_type: event.target.value })
+                          }
+                        >
+                          <option value="" disabled>
+                            Node type
+                          </option>
+                          {nodeTypeOptions.map((nodeType) => (
+                            <option key={nodeType} value={nodeType}>
+                              {nodeType}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <input
+                          aria-label="Taxonomy key"
+                          placeholder="Key"
+                          value={editTaxonomy.key}
+                          onChange={(event) =>
+                            updateEditTaxonomy({ key: event.target.value })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <input
+                          aria-label="Taxonomy value"
+                          placeholder="Value"
+                          value={editTaxonomy.value}
+                          onChange={(event) =>
+                            updateEditTaxonomy({ value: event.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="admin-row__actions admin-row__actions--form">
+                        <div className="button-row">
+                          <button
+                            type="button"
+                            onClick={() => saveEditTaxonomy(editTaxonomy)}
+                          >
+                            Update
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteTaxonomy(editTaxonomy)}
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            className="button-link button-link--ghost"
+                            onClick={cancelEditTaxonomy}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="admin-form">
+                      <textarea
+                        className="admin-textarea--compact"
+                        aria-label="Taxonomy description"
+                        placeholder="Description"
+                        rows={2}
+                        value={editTaxonomy.description}
+                        onChange={(event) =>
+                          updateEditTaxonomy({ description: event.target.value })
+                        }
+                      />
+                    </div>
+                  </>
+                ) : taxonomyDrafts.length > 0 ? (
+                  taxonomyDrafts.map((draft) => (
+                    <Fragment key={draft.draftId}>
+                      <div className="row review-footer admin-row admin-row--form admin-row--form-taxonomy admin-form">
+                        <div>
+                          <select
+                            aria-label="Node type"
+                            className={draft.node_type ? '' : 'admin-select--placeholder'}
+                            value={draft.node_type}
+                            onChange={(event) =>
+                              updateTaxonomyDraft(draft.draftId, {
+                                node_type: event.target.value
+                              })
+                            }
+                          >
+                            <option value="" disabled>
+                              Node type
+                            </option>
+                            {nodeTypeOptions.map((nodeType) => (
+                              <option key={nodeType} value={nodeType}>
+                                {nodeType}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <input
+                            aria-label="Taxonomy key"
+                            placeholder="Key"
+                            value={draft.key}
+                            onChange={(event) =>
+                              updateTaxonomyDraft(draft.draftId, {
+                                key: event.target.value
+                              })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <input
+                            aria-label="Taxonomy value"
+                            placeholder="Value"
+                            value={draft.value}
+                            onChange={(event) =>
+                              updateTaxonomyDraft(draft.draftId, {
+                                value: event.target.value
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="admin-row__actions admin-row__actions--form">
+                          <div className="button-row">
+                            <button
+                              type="button"
+                              onClick={() => saveTaxonomyDraft(draft)}
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="button-link button-link--ghost"
+                              onClick={() => removeTaxonomyDraft(draft.draftId)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="admin-form">
+                        <textarea
+                          className="admin-textarea--compact"
+                          aria-label="Taxonomy description"
+                          placeholder="Description"
+                          rows={2}
+                          value={draft.description}
+                          onChange={(event) =>
+                            updateTaxonomyDraft(draft.draftId, {
+                              description: event.target.value
+                            })
+                          }
+                        />
+                      </div>
+                    </Fragment>
+                  ))
+                ) : (
+                  <div className="admin-toolbar">
+                    <button
+                      type="button"
+                      onClick={addTaxonomyDraft}
+                      disabled={taxonomyDrafts.length > 0 || !!editTaxonomy}
+                    >
+                      Insert new
                     </button>
                   </div>
                 )}
@@ -2418,6 +3397,64 @@ export default function EdgesAdminPage() {
           </>
         )}
 
+        {activeTab === 'taxonomy' && (
+          <>
+            <div className="admin-scroll">
+              <div className="admin-group">
+                <div className="row review-footer admin-row admin-row--header admin-row--data-node-taxonomy">
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() =>
+                        setNodeTaxonomySort((prev) => nextSort(prev, 'node'))
+                      }
+                    >
+                      Node
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(nodeTaxonomySort, 'node')}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() =>
+                        setNodeTaxonomySort((prev) => nextSort(prev, 'taxonomy'))
+                      }
+                    >
+                      Taxonomy
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(nodeTaxonomySort, 'taxonomy')}
+                      </span>
+                    </button>
+                  </div>
+                  <div></div>
+                </div>
+                {sortedNodeTaxonomy.length === 0 && (
+                  <small>No taxonomy links found.</small>
+                )}
+                {sortedNodeTaxonomy.map((entry) => (
+                  <div
+                    className="row review-footer admin-row admin-row--data admin-row--data-node-taxonomy admin-row--clickable"
+                    key={`${entry.node_id}-${entry.taxonomy_id}`}
+                    onClick={() => startEditNodeTaxonomy(entry)}
+                  >
+                    <div className="admin-cell-wrap">
+                      {formatNodeLabel(entry.node_name, entry.node_type)}
+                    </div>
+                    <div className="admin-cell-wrap">
+                      {formatTaxonomyLabel(entry.taxonomy_key, entry.taxonomy_value)}
+                    </div>
+                    <div></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
         {activeTab === 'reviews' && (
           <>
             <div className="admin-scroll">
@@ -2490,6 +3527,43 @@ export default function EdgesAdminPage() {
         {activeTab === 'reference' && (
           <>
             <div className="admin-scroll">
+              {referenceView === 'types' && (
+                <div className="admin-group">
+                  <div className="row review-footer admin-row admin-row--header admin-row--data-node-type">
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setNodeTypeSort((prev) => nextSort(prev, 'node_type'))
+                        }
+                      >
+                        Node type
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(nodeTypeSort, 'node_type')}
+                        </span>
+                      </button>
+                    </div>
+                    <div>
+                      Description
+                    </div>
+                  </div>
+                  {sortedNodeTypes.length === 0 && (
+                    <small>No node types found.</small>
+                  )}
+                  {sortedNodeTypes.map((nodeType) => (
+                    <div
+                      className="row review-footer admin-row admin-row--data admin-row--data-node-type admin-row--clickable"
+                      key={nodeType.node_type}
+                      onClick={() => startEditNodeType(nodeType)}
+                    >
+                      <div>{nodeType.node_type}</div>
+                      <div>{nodeType.description ?? '-'}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {referenceView === 'relations' && (
                 <div className="admin-group">
                   <div className="row review-footer admin-row admin-row--header admin-row--data-relation">
@@ -2591,38 +3665,66 @@ export default function EdgesAdminPage() {
                 </div>
               )}
 
-              {referenceView === 'types' && (
+              {referenceView === 'taxonomy' && (
                 <div className="admin-group">
-                  <div className="row review-footer admin-row admin-row--header admin-row--data-node-type">
+                  <div className="row review-footer admin-row admin-row--header admin-row--data-taxonomy">
                     <div>
                       <button
                         type="button"
                         className="admin-sort"
                         onClick={() =>
-                          setNodeTypeSort((prev) => nextSort(prev, 'node_type'))
+                          setTaxonomySort((prev) => nextSort(prev, 'node_type'))
                         }
                       >
                         Node type
                         <span className="admin-sort__indicator">
-                          {sortIndicator(nodeTypeSort, 'node_type')}
+                          {sortIndicator(taxonomySort, 'node_type')}
                         </span>
                       </button>
                     </div>
                     <div>
-                      Description
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setTaxonomySort((prev) => nextSort(prev, 'key'))
+                        }
+                      >
+                        Key
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(taxonomySort, 'key')}
+                        </span>
+                      </button>
                     </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setTaxonomySort((prev) => nextSort(prev, 'value'))
+                        }
+                      >
+                        Value
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(taxonomySort, 'value')}
+                        </span>
+                      </button>
+                    </div>
+                    <div>Description</div>
                   </div>
-                  {sortedNodeTypes.length === 0 && (
-                    <small>No node types found.</small>
+                  {sortedTaxonomy.length === 0 && (
+                    <small>No taxonomy entries found.</small>
                   )}
-                  {sortedNodeTypes.map((nodeType) => (
+                  {sortedTaxonomy.map((entry) => (
                     <div
-                      className="row review-footer admin-row admin-row--data admin-row--data-node-type admin-row--clickable"
-                      key={nodeType.node_type}
-                      onClick={() => startEditNodeType(nodeType)}
+                      className="row review-footer admin-row admin-row--data admin-row--data-taxonomy admin-row--clickable"
+                      key={entry.id}
+                      onClick={() => startEditTaxonomy(entry)}
                     >
-                      <div>{nodeType.node_type}</div>
-                      <div>{nodeType.description ?? '-'}</div>
+                      <div>{entry.node_type}</div>
+                      <div>{entry.key}</div>
+                      <div>{entry.value}</div>
+                      <div>{entry.description ?? '-'}</div>
                     </div>
                   ))}
                 </div>

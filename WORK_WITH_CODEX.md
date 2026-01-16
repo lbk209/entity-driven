@@ -118,6 +118,24 @@ CREATE TABLE IF NOT EXISTS nodes (
   FOREIGN KEY (type) REFERENCES node_type(node_type)
 );
 
+CREATE TABLE IF NOT EXISTS taxonomy (
+  id INTEGER PRIMARY KEY,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  node_type TEXT NOT NULL,
+  description TEXT,
+  UNIQUE(key, value, node_type),
+  FOREIGN KEY (node_type) REFERENCES node_type(node_type)
+);
+
+CREATE TABLE IF NOT EXISTS node_taxonomy (
+  node_id INTEGER NOT NULL,
+  taxonomy_id INTEGER NOT NULL,
+  PRIMARY KEY (node_id, taxonomy_id),
+  FOREIGN KEY (node_id) REFERENCES nodes(id),
+  FOREIGN KEY (taxonomy_id) REFERENCES taxonomy(id)
+);
+
 CREATE TABLE IF NOT EXISTS edges (
   parent_id INTEGER NOT NULL,
   child_id INTEGER NOT NULL,

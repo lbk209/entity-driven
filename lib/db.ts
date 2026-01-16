@@ -40,6 +40,24 @@ CREATE TABLE IF NOT EXISTS nodes (
   FOREIGN KEY (type) REFERENCES node_type(node_type)
 );
 
+CREATE TABLE IF NOT EXISTS taxonomy (
+  id INTEGER PRIMARY KEY,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  node_type TEXT NOT NULL,
+  description TEXT,
+  UNIQUE(key, value, node_type),
+  FOREIGN KEY (node_type) REFERENCES node_type(node_type)
+);
+
+CREATE TABLE IF NOT EXISTS node_taxonomy (
+  node_id INTEGER NOT NULL,
+  taxonomy_id INTEGER NOT NULL,
+  PRIMARY KEY (node_id, taxonomy_id),
+  FOREIGN KEY (node_id) REFERENCES nodes(id),
+  FOREIGN KEY (taxonomy_id) REFERENCES taxonomy(id)
+);
+
 CREATE TABLE IF NOT EXISTS edge_relations (
   relation TEXT PRIMARY KEY,
   description TEXT,
@@ -204,9 +222,9 @@ export function getDb() {
     const nodeHasCreatedAt = nodeColumns.some((column) => column.name === 'created_at');
     const nodeHasUpdatedAt = nodeColumns.some((column) => column.name === 'updated_at');
     const needsNodeTypeFk = !hasForeignKey(db, 'nodes', 'type', 'node_type', 'node_type');
-    if (needsNodeTypeFk) {
-      db.exec('PRAGMA foreign_keys = OFF');
-      db.exec(`
+  if (needsNodeTypeFk) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`
         ALTER TABLE nodes RENAME TO nodes_old;
         CREATE TABLE nodes (
           id INTEGER PRIMARY KEY,
@@ -268,6 +286,80 @@ export function getDb() {
         FOREIGN KEY (type) REFERENCES node_type(node_type)
       );
     `);
+  }
+  const hasTaxonomy = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='taxonomy'")
+    .get() as { name?: string } | undefined;
+  if (hasTaxonomy?.name) {
+    const taxonomyColumns = db
+      .prepare("PRAGMA table_info('taxonomy')")
+      .all() as Array<{ name: string }>;
+    const taxonomyHasNodeType = taxonomyColumns.some(
+      (column) => column.name === 'node_type'
+    );
+    const needsTaxonomyFk = !hasForeignKey(
+      db,
+      'taxonomy',
+      'node_type',
+      'node_type',
+      'node_type'
+    );
+    if (!taxonomyHasNodeType || needsTaxonomyFk) {
+      db.exec('PRAGMA foreign_keys = OFF');
+      db.exec(`
+        ALTER TABLE taxonomy RENAME TO taxonomy_old;
+        CREATE TABLE taxonomy (
+          id INTEGER PRIMARY KEY,
+          key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          node_type TEXT NOT NULL,
+          description TEXT,
+          UNIQUE(key, value, node_type),
+          FOREIGN KEY (node_type) REFERENCES node_type(node_type)
+        );
+        INSERT INTO taxonomy (key, value, node_type, description)
+        SELECT key, value, 'unknown', description FROM taxonomy_old;
+        DROP TABLE taxonomy_old;
+      `);
+      db.exec('PRAGMA foreign_keys = ON');
+      db
+        .prepare(
+          `
+          INSERT OR IGNORE INTO node_type (node_type, description)
+          VALUES ('unknown', NULL);
+        `
+        )
+        .run();
+    }
+  }
+  const hasNodeTaxonomy = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='node_taxonomy'")
+    .get() as { name?: string } | undefined;
+  if (hasNodeTaxonomy?.name) {
+    const needsNodeTaxonomyFk = !hasForeignKey(
+      db,
+      'node_taxonomy',
+      'taxonomy_id',
+      'taxonomy',
+      'id'
+    );
+    if (needsNodeTaxonomyFk) {
+      db.exec('PRAGMA foreign_keys = OFF');
+      db.exec(`
+        ALTER TABLE node_taxonomy RENAME TO node_taxonomy_old;
+        CREATE TABLE node_taxonomy (
+          node_id INTEGER NOT NULL,
+          taxonomy_id INTEGER NOT NULL,
+          PRIMARY KEY (node_id, taxonomy_id),
+          FOREIGN KEY (node_id) REFERENCES nodes(id),
+          FOREIGN KEY (taxonomy_id) REFERENCES taxonomy(id)
+        );
+        INSERT INTO node_taxonomy (node_id, taxonomy_id)
+        SELECT node_id, taxonomy_id FROM node_taxonomy_old;
+        DROP TABLE node_taxonomy_old;
+      `);
+      db.exec('PRAGMA foreign_keys = ON');
+    }
   }
   const hasEdges = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='edges'")
