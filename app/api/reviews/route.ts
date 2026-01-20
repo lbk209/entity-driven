@@ -5,10 +5,12 @@ export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const entityName = searchParams.get('entity');
+  const nodeIdRaw = searchParams.get('node');
+  const nodeName = searchParams.get('node_name');
   const userId = searchParams.get('user');
-  const terms = entityName
-    ? entityName
+  const nodeId = nodeIdRaw ? Number(nodeIdRaw) : null;
+  const terms = nodeName
+    ? nodeName
         .toLowerCase()
         .split(/\s+/)
         .map((term) => term.trim())
@@ -26,34 +28,56 @@ export async function GET(request: Request) {
     created_at: string;
     updated_at: string | null;
     entity_name: string;
+    node_name: string | null;
   }> = [];
 
-  if (terms.length > 0) {
-    const whereClause = terms.map(() => 'LOWER(r.entity_name) LIKE ?').join(' OR ');
+  if (Number.isFinite(nodeId)) {
+    const userClause = userFilter ? 'AND u.user_id = ?' : '';
+    rows = db
+      .prepare(
+        `
+        SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
+               r.entity_name,
+               n.name AS node_name
+        FROM review r
+        JOIN user u ON u.id = r.user_id
+        LEFT JOIN nodes n ON n.id = r.node_id
+        WHERE r.node_id = ?
+        ${userClause}
+        ORDER BY COALESCE(r.updated_at, r.created_at) DESC
+      `
+      )
+      .all(nodeId, ...(userFilter ? [userFilter] : []));
+  } else if (terms.length > 0) {
+    const whereClause = terms.map(() => 'LOWER(n.name) LIKE ?').join(' AND ');
     const params = terms.map((term) => `%${term}%`);
     const userClause = userFilter ? 'AND u.user_id = ?' : '';
     rows = db
       .prepare(
         `
         SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               r.entity_name
+               r.entity_name,
+               n.name AS node_name
         FROM review r
         JOIN user u ON u.id = r.user_id
+        LEFT JOIN nodes n ON n.id = r.node_id
         WHERE (${whereClause})
         ${userClause}
         ORDER BY COALESCE(r.updated_at, r.created_at) DESC
       `
-      )
-      .all(...params, ...(userFilter ? [userFilter] : []));
+    )
+    .all(...params, ...(userFilter ? [userFilter] : []));
   } else {
     const userClause = userFilter ? 'WHERE u.user_id = ?' : '';
     rows = db
       .prepare(
         `
         SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               r.entity_name
+               r.entity_name,
+               n.name AS node_name
         FROM review r
         JOIN user u ON u.id = r.user_id
+        LEFT JOIN nodes n ON n.id = r.node_id
         ${userClause}
         ORDER BY COALESCE(r.updated_at, r.created_at) DESC
       `
@@ -68,6 +92,7 @@ export async function GET(request: Request) {
     updated_at: string | null;
     preview: string;
     entity_name: string;
+    node_name: string | null;
     sentiment?: 'positive' | 'negative';
   }> = rows.map((row) => ({
     id: row.id,
@@ -75,7 +100,8 @@ export async function GET(request: Request) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     preview: previewText(row.content),
-    entity_name: row.entity_name
+    entity_name: row.entity_name,
+    node_name: row.node_name
   }));
 
   const hasSentimentTable = db

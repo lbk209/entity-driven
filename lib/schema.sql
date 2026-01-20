@@ -62,3 +62,20 @@ CREATE TABLE IF NOT EXISTS review_sentiment (
   PRIMARY KEY (review_id, method, version),
   FOREIGN KEY (review_id) REFERENCES review(id)
 );
+
+CREATE TABLE IF NOT EXISTS node_review_stats (
+  node_id INTEGER PRIMARY KEY,
+  review_count INTEGER NOT NULL,
+  sentiment_sum REAL NOT NULL,
+  sentiment_avg REAL NOT NULL,
+  bayes_score REAL NOT NULL,
+  weighted_count REAL,
+  weighted_sentiment_sum REAL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_review_stats_review_count
+  ON node_review_stats (review_count DESC);
+CREATE INDEX IF NOT EXISTS idx_node_review_stats_bayes_score
+  ON node_review_stats (bayes_score DESC);

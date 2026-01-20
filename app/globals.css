@@ -70,6 +70,10 @@ h1 {
   margin-bottom: 16px;
 }
 
+.page-header__actions {
+  margin-left: auto;
+}
+
 .button-row {
   display: flex;
   gap: 10px;
@@ -373,6 +377,16 @@ textarea {
 
 .admin-row--data {
   grid-template-columns: 90px minmax(220px, 1fr) minmax(180px, 1fr) 90px 90px;
+}
+
+.admin-row--data-node-review-stats {
+  grid-template-columns: minmax(260px, 2fr) 140px 140px;
+}
+
+.admin-row--data-node-review-stats > div {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .admin-row--deemphasized {

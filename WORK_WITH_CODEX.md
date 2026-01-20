@@ -9,6 +9,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 - Submit and edit reviews linked to entities (inline creation supported)
 - Filter reviews by linked entity name terms
 - Review previews use full content; entity badges are inline and mobile clamps to two lines
+- Node review stats page at `/node-review-stats` with server-side node-name search
 
 ## Stack
 
@@ -30,7 +31,9 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
   - `app/api/nodes/route.ts`
   - `app/api/nodes/merge/route.ts`
   - `app/api/edges/route.ts`
+  - `app/api/node-review-stats/route.ts`
 - Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/page.tsx`, `app/reviews/[id]/edit/page.tsx`
+- Node review stats UI: `app/node-review-stats/page.tsx`
 - Shared review form: `app/reviews/ReviewForm.tsx`
 - Admin UI: `app/admin/page.tsx`
 - Styles: `app/globals.css`
@@ -61,6 +64,7 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Review details show the entity badge before content with an edit action.
 - Reviews store `entity_name` directly with an optional `node_id` anchor.
 - Search/filter resolves via `review.entity_name`.
+- Entity Reviews search uses `node_name` (server-side); API accepts `node` (id) and `node_name` (name).
 - Admin page for nodes/edges/reference management at `/admin` with merge workflow.
 - Review edit supports delete with user/password confirmation.
 - Notebook for data review: `review_app_sqlite.ipynb`.
@@ -156,12 +160,29 @@ CREATE TABLE IF NOT EXISTS review_sentiment (
   PRIMARY KEY (review_id, method, version),
   FOREIGN KEY (review_id) REFERENCES review(id)
 );
+
+CREATE TABLE IF NOT EXISTS node_review_stats (
+  node_id INTEGER PRIMARY KEY,
+  review_count INTEGER NOT NULL,
+  sentiment_sum REAL NOT NULL,
+  sentiment_avg REAL NOT NULL,
+  bayes_score REAL NOT NULL,
+  weighted_count REAL,
+  weighted_sentiment_sum REAL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_review_stats_review_count
+  ON node_review_stats (review_count DESC);
+CREATE INDEX IF NOT EXISTS idx_node_review_stats_bayes_score
+  ON node_review_stats (bayes_score DESC);
 ```
 
 ## Quick Context (No File Reads Needed)
 
 - Admin UI path: `/admin`
-- Tables: `user`, `review`, `review_sentiment`, `nodes`, `edges`, `edge_relations`, `node_type`
+- Tables: `user`, `review`, `review_sentiment`, `node_review_stats`, `nodes`, `edges`, `edge_relations`, `node_type`
 - Nodes/edges use the same inline form layout as insert, with Update/Cancel/Delete.
 - Delete confirmation always appears; if referenced by reviews/edges, message is stronger
 - Merge nodes reassigns reviews and edges in a single transaction

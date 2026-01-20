@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type Entity = {
+type NodeSummary = {
   id: number;
   name: string;
   type: string;
@@ -16,45 +17,62 @@ type Review = {
   updated_at: string | null;
   preview: string;
   entity_name: string;
+  node_name: string | null;
   sentiment?: 'positive' | 'negative';
 };
 
 export default function HomePage() {
-  const [entities, setEntities] = useState<Entity[]>([]);
+  const [nodes, setNodes] = useState<NodeSummary[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [filterEntity, setFilterEntity] = useState('');
+  const [filterNode, setFilterNode] = useState('');
+  const [filterNodeId, setFilterNodeId] = useState('');
   const [filterUser, setFilterUser] = useState('');
-  const [showEntitySuggestions, setShowEntitySuggestions] = useState(false);
+  const [showNodeSuggestions, setShowNodeSuggestions] = useState(false);
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
+  const searchParams = useSearchParams();
 
-  const entityNames = useMemo(
-    () => entities.map((entity) => entity.name),
-    [entities]
-  );
-  const entitySuggestions = useMemo(() => {
-    const trimmed = filterEntity.trim().toLowerCase();
-    return entityNames
+  const nodeNames = useMemo(() => nodes.map((node) => node.name), [nodes]);
+  const nodeSuggestions = useMemo(() => {
+    const trimmed = filterNode.trim().toLowerCase();
+    return nodeNames
       .filter((name) => name.trim().length > 0)
       .filter((name) => {
         if (!trimmed) return true;
         return name.toLowerCase().includes(trimmed);
       })
       .slice(0, 20);
-  }, [entityNames, filterEntity]);
+  }, [nodeNames, filterNode]);
 
   useEffect(() => {
     fetch('/api/entities')
       .then((res) => res.json())
-      .then((data) => setEntities(data.entities || []))
-      .catch(() => setEntities([]));
+      .then((data) => setNodes(data.entities || []))
+      .catch(() => setNodes([]));
   }, []);
 
   useEffect(() => {
-    const trimmed = filterEntity.trim();
+    const nodeParam = searchParams.get('node');
+    const nodeNameParam = searchParams.get('node_name');
+    if (nodeNameParam) {
+      setFilterNode(nodeNameParam);
+      setFilterNodeId('');
+      return;
+    }
+    if (nodeParam) {
+      setFilterNodeId(nodeParam);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const trimmed = filterNode.trim();
     const userTrimmed = filterUser.trim();
     const params = new URLSearchParams();
-    if (trimmed) params.set('entity', trimmed);
+    if (filterNodeId.trim()) {
+      params.set('node', filterNodeId.trim());
+    } else if (trimmed) {
+      params.set('node_name', trimmed);
+    }
     if (userTrimmed) params.set('user', userTrimmed);
     const query = params.toString();
     const url = query ? `/api/reviews?${query}` : '/api/reviews';
@@ -62,7 +80,7 @@ export default function HomePage() {
       .then((res) => res.json())
       .then((data) => setReviews(data.reviews || []))
       .catch(() => setReviews([]));
-  }, [filterEntity, filterUser]);
+  }, [filterNode, filterNodeId, filterUser]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -78,8 +96,18 @@ export default function HomePage() {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (!filterNodeId.trim() || filterNode.trim()) return;
+    const matchedNode = nodes.find((node) => String(node.id) === filterNodeId);
+    if (matchedNode) {
+      setFilterNode(matchedNode.name);
+    }
+  }, [filterNode, filterNodeId, nodes]);
+
   function handleBadgeClick(name: string) {
-    setFilterEntity(name);
+    setFilterNode(name);
+    const matchedNode = nodes.find((node) => node.name === name);
+    setFilterNodeId(matchedNode ? String(matchedNode.id) : '');
   }
 
   function handleUserClick(userId: string) {
@@ -87,7 +115,8 @@ export default function HomePage() {
   }
 
   function handleClearFilters() {
-    setFilterEntity('');
+    setFilterNode('');
+    setFilterNodeId('');
     setFilterUser('');
   }
 
@@ -104,39 +133,47 @@ export default function HomePage() {
         <div className="page-header">
           <div>
             <h1>Entity Reviews</h1>
-            <small>Browse recent reviews and filter by linked entity.</small>
+            <small>Browse recent reviews and filter by node name.</small>
           </div>
-          <Link href="/reviews/new" className="button-link">
-            Write review
-          </Link>
+          <div className="button-row page-header__actions">
+            <Link href="/node-review-stats" className="button-link">
+              Node review stats
+            </Link>
+            <Link href="/reviews/new" className="button-link">
+              Write review
+            </Link>
+          </div>
         </div>
 
         <section className="section">
-          <label htmlFor="entity-search">Filter by linked entity</label>
+          <label htmlFor="node-search">Filter by node name</label>
           <div className="filter-row">
             <div className="entity-input-wrap">
               <input
-                id="entity-search"
-                placeholder="Type entity name"
-                value={filterEntity}
+                id="node-search"
+                placeholder="Type node name"
+                value={filterNode}
                 onChange={(event) => {
-                  setFilterEntity(event.target.value);
-                  setShowEntitySuggestions(true);
+                  setFilterNode(event.target.value);
+                  setFilterNodeId('');
+                  setShowNodeSuggestions(true);
                 }}
-                onFocus={() => setShowEntitySuggestions(true)}
-                onBlur={() => setShowEntitySuggestions(false)}
+                onFocus={() => setShowNodeSuggestions(true)}
+                onBlur={() => setShowNodeSuggestions(false)}
                 autoComplete="off"
               />
-              {showEntitySuggestions && entitySuggestions.length > 0 && (
+              {showNodeSuggestions && nodeSuggestions.length > 0 && (
                 <div className="entity-suggestions">
-                  {entitySuggestions.map((name) => (
+                  {nodeSuggestions.map((name) => (
                     <button
                       type="button"
                       key={name}
                       onMouseDown={(event) => {
                         event.preventDefault();
-                        setFilterEntity(name);
-                        setShowEntitySuggestions(false);
+                        setFilterNode(name);
+                        const matchedNode = nodes.find((node) => node.name === name);
+                        setFilterNodeId(matchedNode ? String(matchedNode.id) : '');
+                        setShowNodeSuggestions(false);
                       }}
                     >
                       {name}
@@ -145,13 +182,13 @@ export default function HomePage() {
                 </div>
               )}
             </div>
-            {(filterEntity.trim() || filterUser.trim()) && (
+            {(filterNode.trim() || filterUser.trim()) && (
               <button className="clear-button" type="button" onClick={handleClearFilters}>
                 Clear
               </button>
             )}
           </div>
-          <small>Filtering only matches linked entities, not review text.</small>
+          <small>Filtering only matches linked nodes, not review text.</small>
           {filterUser.trim() && (
             <small>Filtering by user: {filterUser.trim()}</small>
           )}
@@ -165,23 +202,25 @@ export default function HomePage() {
       >
         <div className="review-scroll">
           <ul className="list list--snap">
-            {reviews.map((review) => (
-              <li key={review.id}>
-                <div className="review-line">
-                  <span className="review-preview">
-                    <span
-                      className="badge badge--filter"
-                      role="button"
-                      tabIndex={0}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        handleBadgeClick(review.entity_name);
-                      }}
-                      onKeyDown={(event) => handleBadgeKeyDown(review.entity_name, event)}
-                    >
-                      {review.entity_name}
-                    </span>
+            {reviews.map((review) => {
+              const nodeLabel = review.node_name ?? review.entity_name;
+              return (
+                <li key={review.id}>
+                  <div className="review-line">
+                    <span className="review-preview">
+                      <span
+                        className="badge badge--filter"
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleBadgeClick(nodeLabel);
+                        }}
+                        onKeyDown={(event) => handleBadgeKeyDown(nodeLabel, event)}
+                      >
+                        {nodeLabel}
+                      </span>
                     {review.sentiment && (
                       <span
                         className={`review-sentiment review-sentiment--${review.sentiment}`}
@@ -206,10 +245,11 @@ export default function HomePage() {
                   ·{' '}
                   {new Date(review.updated_at ?? review.created_at).toLocaleString()}
                 </small>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
-          {reviews.length === 0 && <small>No reviews found.</small>}
+            {reviews.length === 0 && <small>No reviews found.</small>}
         </div>
       </section>
     </>
