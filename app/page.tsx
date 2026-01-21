@@ -21,12 +21,19 @@ type Review = {
   sentiment?: 'positive' | 'negative';
 };
 
+type ReviewLabelRow = {
+  label: string;
+  node_count: number;
+};
+
 export default function HomePage() {
   const [nodes, setNodes] = useState<NodeSummary[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [labels, setLabels] = useState<ReviewLabelRow[]>([]);
   const [filterNode, setFilterNode] = useState('');
   const [filterNodeId, setFilterNodeId] = useState('');
   const [filterUser, setFilterUser] = useState('');
+  const [selectedLabel, setSelectedLabel] = useState('All');
   const [showNodeSuggestions, setShowNodeSuggestions] = useState(false);
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
@@ -43,6 +50,14 @@ export default function HomePage() {
       })
       .slice(0, 20);
   }, [nodeNames, filterNode]);
+
+  const allLabelBadges = useMemo(() => {
+    const list = labels.map((item) => ({
+      label: item.label,
+      count: item.node_count
+    }));
+    return [{ label: 'All', count: null }, ...list];
+  }, [labels]);
 
   useEffect(() => {
     fetch('/api/entities')
@@ -68,6 +83,7 @@ export default function HomePage() {
     const trimmed = filterNode.trim();
     const userTrimmed = filterUser.trim();
     const params = new URLSearchParams();
+    if (selectedLabel !== 'All') params.set('label', selectedLabel);
     if (filterNodeId.trim()) {
       params.set('node', filterNodeId.trim());
     } else if (trimmed) {
@@ -78,9 +94,15 @@ export default function HomePage() {
     const url = query ? `/api/reviews?${query}` : '/api/reviews';
     fetch(url)
       .then((res) => res.json())
-      .then((data) => setReviews(data.reviews || []))
-      .catch(() => setReviews([]));
-  }, [filterNode, filterNodeId, filterUser]);
+      .then((data) => {
+        setReviews(data.reviews || []);
+        setLabels(data.labels || []);
+      })
+      .catch(() => {
+        setReviews([]);
+        setLabels([]);
+      });
+  }, [filterNode, filterNodeId, filterUser, selectedLabel]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -118,6 +140,7 @@ export default function HomePage() {
     setFilterNode('');
     setFilterNodeId('');
     setFilterUser('');
+    setSelectedLabel('All');
   }
 
   function handleBadgeKeyDown(name: string, event: React.KeyboardEvent<HTMLSpanElement>) {
@@ -146,11 +169,34 @@ export default function HomePage() {
         </div>
 
         <section className="section">
-          <label htmlFor="node-search">Filter by node name</label>
+          <div className="badge-row" role="radiogroup" aria-label="Filter by taxonomy label">
+            {allLabelBadges.map((badge) => (
+              <button
+                key={badge.label}
+                type="button"
+                className={`badge badge--filter ${
+                  selectedLabel === badge.label ? 'badge--selected' : 'badge--muted'
+                }`}
+                role="radio"
+                aria-checked={selectedLabel === badge.label}
+                onClick={() => setSelectedLabel(badge.label)}
+                title={
+                  badge.count === null
+                    ? 'All'
+                    : `${badge.label} (${badge.count})`
+                }
+              >
+                {badge.count === null
+                  ? badge.label
+                  : `${badge.label} (${badge.count})`}
+              </button>
+            ))}
+          </div>
           <div className="filter-row">
             <div className="entity-input-wrap">
               <input
                 id="node-search"
+                aria-label="Filter by node name"
                 placeholder="Type node name"
                 value={filterNode}
                 onChange={(event) => {

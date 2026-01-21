@@ -14,13 +14,10 @@ type NodeReviewStatRow = {
   bayes_score: number;
 };
 
-function compareText(a: string, b: string) {
-  return a.localeCompare(b);
-}
-
-function compareNumber(a: number, b: number) {
-  return a === b ? 0 : a > b ? 1 : -1;
-}
+type NodeReviewLabelRow = {
+  label: string;
+  node_count: number;
+};
 
 function nextSort<T extends string>(current: SortState<T>, key: T): SortState<T> {
   if (current.key === key) {
@@ -42,9 +39,11 @@ function formatScore(value: number) {
 export default function NodeReviewStatsPage() {
   const router = useRouter();
   const [stats, setStats] = useState<NodeReviewStatRow[]>([]);
+  const [labels, setLabels] = useState<NodeReviewLabelRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterNode, setFilterNode] = useState('');
+  const [selectedLabel, setSelectedLabel] = useState('All');
   const [sort, setSort] = useState<SortState<'name' | 'review_count' | 'bayes_score'>>({
     key: 'review_count',
     direction: 'desc'
@@ -61,16 +60,23 @@ export default function NodeReviewStatsPage() {
       try {
         const trimmed = filterNode.trim();
         const params = new URLSearchParams();
+        if (selectedLabel !== 'All') params.set('label', selectedLabel);
         if (trimmed) params.set('node_name', trimmed);
+        params.set('sort_key', sort.key);
+        params.set('sort_dir', sort.direction);
         const query = params.toString();
         const url = query ? `/api/node-review-stats?${query}` : '/api/node-review-stats';
         const res = await fetch(url);
         if (!res.ok) {
           throw new Error('Failed to load node review stats');
         }
-        const data = (await res.json()) as { stats?: NodeReviewStatRow[] };
+        const data = (await res.json()) as {
+          stats?: NodeReviewStatRow[];
+          labels?: NodeReviewLabelRow[];
+        };
         if (isActive) {
           setStats(data.stats ?? []);
+          setLabels(data.labels ?? []);
         }
       } catch (err) {
         if (isActive) {
@@ -87,7 +93,7 @@ export default function NodeReviewStatsPage() {
     return () => {
       isActive = false;
     };
-  }, [filterNode]);
+  }, [filterNode, selectedLabel, sort]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -103,22 +109,13 @@ export default function NodeReviewStatsPage() {
     return () => observer.disconnect();
   }, []);
 
-  const sortedStats = useMemo(() => {
-    const list = [...stats];
-    const dir = sort.direction === 'asc' ? 1 : -1;
-    list.sort((a, b) => {
-      if (sort.key === 'review_count') {
-        return compareNumber(a.review_count, b.review_count) * dir;
-      }
-      if (sort.key === 'bayes_score') {
-        return compareNumber(a.bayes_score, b.bayes_score) * dir;
-      }
-      const nameA = (a.node_name ?? '').toLowerCase();
-      const nameB = (b.node_name ?? '').toLowerCase();
-      return compareText(nameA, nameB) * dir;
-    });
-    return list;
-  }, [sort, stats]);
+  const allLabelBadges = useMemo(() => {
+    const list = labels.map((item) => ({
+      label: item.label,
+      count: item.node_count
+    }));
+    return [{ label: 'All', count: null }, ...list];
+  }, [labels]);
 
   return (
     <>
@@ -138,11 +135,32 @@ export default function NodeReviewStatsPage() {
           </div>
         </div>
         <section className="section">
-          <label htmlFor="node-search">Filter by node name</label>
+          <div className="badge-row" role="radiogroup" aria-label="Filter by taxonomy label">
+            {allLabelBadges.map((badge) => (
+              <button
+                key={badge.label}
+                type="button"
+                className={`badge badge--filter ${
+                  selectedLabel === badge.label ? 'badge--selected' : 'badge--muted'
+                }`}
+                role="radio"
+                aria-checked={selectedLabel === badge.label}
+                onClick={() => setSelectedLabel(badge.label)}
+                title={
+                  badge.count === null
+                    ? 'All'
+                    : `${badge.label} (${badge.count})`
+                }
+              >
+                {badge.count === null ? badge.label : `${badge.label} (${badge.count})`}
+              </button>
+            ))}
+          </div>
           <div className="filter-row">
             <div className="entity-input-wrap">
               <input
                 id="node-search"
+                aria-label="Filter by node name"
                 placeholder="Type node name"
                 value={filterNode}
                 onChange={(event) => setFilterNode(event.target.value)}
@@ -208,7 +226,7 @@ export default function NodeReviewStatsPage() {
                   </button>
                 </div>
               </div>
-              {sortedStats.map((row) => (
+              {stats.map((row) => (
                 <div
                   className="row review-footer admin-row admin-row--data admin-row--data-node-review-stats admin-row--clickable"
                   key={row.node_id}

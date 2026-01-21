@@ -36,6 +36,7 @@ type Taxonomy = {
   key: string;
   value: string;
   node_type: string;
+  label: string;
   description: string | null;
 };
 type NodeTaxonomy = {
@@ -45,6 +46,7 @@ type NodeTaxonomy = {
   node_type: string;
   taxonomy_key: string;
   taxonomy_value: string;
+  taxonomy_label: string;
 };
 type ReviewAdmin = {
   id: number;
@@ -83,6 +85,7 @@ type DraftTaxonomy = {
   key: string;
   value: string;
   node_type: string;
+  label: string;
   description: string;
 };
 type DraftNodeTaxonomy = {
@@ -111,6 +114,7 @@ type EditTaxonomy = {
   key: string;
   value: string;
   node_type: string;
+  label: string;
   description: string;
 };
 type EditNodeTaxonomy = {
@@ -407,13 +411,13 @@ export default function EdgesAdminPage() {
     direction: 'asc'
   });
   const [taxonomySort, setTaxonomySort] = useState<
-    SortState<'node_type' | 'key' | 'value'>
+    SortState<'node_type' | 'key' | 'value' | 'label'>
   >({
     key: 'key',
     direction: 'asc'
   });
   const [nodeTaxonomySort, setNodeTaxonomySort] = useState<
-    SortState<'node' | 'taxonomy'>
+    SortState<'node' | 'taxonomy' | 'label'>
   >({
     key: 'node',
     direction: 'asc'
@@ -709,6 +713,11 @@ export default function EdgesAdminPage() {
           compareText(a.node_type.toLowerCase(), b.node_type.toLowerCase()) * dir;
         if (nodeTypeCompare !== 0) return nodeTypeCompare;
       }
+      if (taxonomySort.key === 'label') {
+        const labelCompare =
+          compareText(a.label.toLowerCase(), b.label.toLowerCase()) * dir;
+        if (labelCompare !== 0) return labelCompare;
+      }
       if (taxonomySort.key === 'value') {
         const valueCompare =
           compareText(a.value.toLowerCase(), b.value.toLowerCase()) * dir;
@@ -786,6 +795,9 @@ export default function EdgesAdminPage() {
     const list = [...filteredNodeTaxonomy];
     const dir = nodeTaxonomySort.direction === 'asc' ? 1 : -1;
     list.sort((a, b) => {
+      if (nodeTaxonomySort.key === 'label') {
+        return compareText(a.taxonomy_label.toLowerCase(), b.taxonomy_label.toLowerCase()) * dir;
+      }
       if (nodeTaxonomySort.key === 'taxonomy') {
         return (
           compareText(
@@ -943,6 +955,7 @@ export default function EdgesAdminPage() {
       key: '',
       value: '',
       node_type: '',
+      label: '',
       description: ''
     };
     setTaxonomyDrafts((prev) => [...prev, draft]);
@@ -1189,6 +1202,10 @@ export default function EdgesAdminPage() {
       setStatus('Key and value are required.');
       return;
     }
+    if (!draft.label.trim()) {
+      setStatus('Label is required.');
+      return;
+    }
     const res = await fetch('/api/taxonomy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1196,6 +1213,7 @@ export default function EdgesAdminPage() {
         key: draft.key,
         value: draft.value,
         node_type: draft.node_type,
+        label: draft.label,
         description: draft.description
       })
     });
@@ -1207,7 +1225,7 @@ export default function EdgesAdminPage() {
     setTaxonomyDrafts((prev) =>
       prev.map((item) =>
         item.draftId === draft.draftId
-          ? { ...item, key: '', value: '', node_type: '', description: '' }
+          ? { ...item, key: '', value: '', node_type: '', label: '', description: '' }
           : item
       )
     );
@@ -1342,6 +1360,10 @@ export default function EdgesAdminPage() {
       setStatus('Key and value are required.');
       return;
     }
+    if (!entry.label.trim()) {
+      setStatus('Label is required.');
+      return;
+    }
     const res = await fetch('/api/taxonomy', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1350,6 +1372,7 @@ export default function EdgesAdminPage() {
         key: entry.key,
         value: entry.value,
         node_type: entry.node_type,
+        label: entry.label,
         description: entry.description
       })
     });
@@ -1576,6 +1599,7 @@ export default function EdgesAdminPage() {
       key: entry.key,
       value: entry.value,
       node_type: entry.node_type,
+      label: entry.label,
       description: entry.description ?? ''
     });
   }
@@ -3075,6 +3099,16 @@ export default function EdgesAdminPage() {
                           }
                         />
                       </div>
+                      <div>
+                        <input
+                          aria-label="Taxonomy label"
+                          placeholder="Label"
+                          value={editTaxonomy.label}
+                          onChange={(event) =>
+                            updateEditTaxonomy({ label: event.target.value })
+                          }
+                        />
+                      </div>
                       <div className="admin-row__actions admin-row__actions--form">
                         <div className="button-row">
                           <button
@@ -3157,6 +3191,18 @@ export default function EdgesAdminPage() {
                             onChange={(event) =>
                               updateTaxonomyDraft(draft.draftId, {
                                 value: event.target.value
+                              })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <input
+                            aria-label="Taxonomy label"
+                            placeholder="Label"
+                            value={draft.label}
+                            onChange={(event) =>
+                              updateTaxonomyDraft(draft.draftId, {
+                                label: event.target.value
                               })
                             }
                           />
@@ -3430,6 +3476,20 @@ export default function EdgesAdminPage() {
                       </span>
                     </button>
                   </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() =>
+                        setNodeTaxonomySort((prev) => nextSort(prev, 'label'))
+                      }
+                    >
+                      Label
+                      <span className="admin-sort__indicator">
+                        {sortIndicator(nodeTaxonomySort, 'label')}
+                      </span>
+                    </button>
+                  </div>
                   <div></div>
                 </div>
                 {sortedNodeTaxonomy.length === 0 && (
@@ -3447,6 +3507,7 @@ export default function EdgesAdminPage() {
                     <div className="admin-cell-wrap">
                       {formatTaxonomyLabel(entry.taxonomy_key, entry.taxonomy_value)}
                     </div>
+                    <div className="admin-cell-wrap">{entry.taxonomy_label}</div>
                     <div></div>
                   </div>
                 ))}
@@ -3710,7 +3771,20 @@ export default function EdgesAdminPage() {
                         </span>
                       </button>
                     </div>
-                    <div>Description</div>
+                    <div>
+                      <button
+                        type="button"
+                        className="admin-sort"
+                        onClick={() =>
+                          setTaxonomySort((prev) => nextSort(prev, 'label'))
+                        }
+                      >
+                        Label
+                        <span className="admin-sort__indicator">
+                          {sortIndicator(taxonomySort, 'label')}
+                        </span>
+                      </button>
+                    </div>
                   </div>
                   {sortedTaxonomy.length === 0 && (
                     <small>No taxonomy entries found.</small>
@@ -3724,7 +3798,7 @@ export default function EdgesAdminPage() {
                       <div>{entry.node_type}</div>
                       <div>{entry.key}</div>
                       <div>{entry.value}</div>
-                      <div>{entry.description ?? '-'}</div>
+                      <div>{entry.label}</div>
                     </div>
                   ))}
                 </div>

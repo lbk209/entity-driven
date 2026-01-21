@@ -39,7 +39,8 @@ export async function GET() {
         n.name AS node_name,
         n.type AS node_type,
         t.key AS taxonomy_key,
-        t.value AS taxonomy_value
+        t.value AS taxonomy_value,
+        t.label AS taxonomy_label
       FROM node_taxonomy nt
       JOIN nodes n ON n.id = nt.node_id
       JOIN taxonomy t ON t.id = nt.taxonomy_id

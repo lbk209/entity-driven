@@ -74,7 +74,7 @@ export default function ReviewDetailPage({ params }: { params: { id: string } })
             Edit
           </Link>
           <Link href="/" className="button-link button-link--ghost">
-            Back to home
+            Back
           </Link>
         </div>
       </div>

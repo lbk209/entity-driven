@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS taxonomy (
   key TEXT NOT NULL,
   value TEXT NOT NULL,
   node_type TEXT NOT NULL,
+  label TEXT NOT NULL UNIQUE,
   description TEXT,
   UNIQUE(key, value, node_type),
   FOREIGN KEY (node_type) REFERENCES node_type(node_type)
@@ -314,6 +315,7 @@ export function getDb() {
     const taxonomyHasNodeType = taxonomyColumns.some(
       (column) => column.name === 'node_type'
     );
+    const taxonomyHasLabel = taxonomyColumns.some((column) => column.name === 'label');
     const needsTaxonomyFk = !hasForeignKey(
       db,
       'taxonomy',
@@ -321,7 +323,13 @@ export function getDb() {
       'node_type',
       'node_type'
     );
-    if (!taxonomyHasNodeType || needsTaxonomyFk) {
+    const shouldRebuildTaxonomy =
+      !taxonomyHasNodeType || needsTaxonomyFk || !taxonomyHasLabel;
+    if (shouldRebuildTaxonomy) {
+      const nodeTypeValue = taxonomyHasNodeType ? 'node_type' : "'unknown'";
+      const labelExpr = taxonomyHasLabel
+        ? `COALESCE(label, key || '_' || value || '_' || ${nodeTypeValue})`
+        : `key || '_' || value || '_' || ${nodeTypeValue}`;
       db.exec('PRAGMA foreign_keys = OFF');
       db.exec(`
         ALTER TABLE taxonomy RENAME TO taxonomy_old;
@@ -330,23 +338,33 @@ export function getDb() {
           key TEXT NOT NULL,
           value TEXT NOT NULL,
           node_type TEXT NOT NULL,
+          label TEXT NOT NULL UNIQUE,
           description TEXT,
           UNIQUE(key, value, node_type),
           FOREIGN KEY (node_type) REFERENCES node_type(node_type)
         );
-        INSERT INTO taxonomy (key, value, node_type, description)
-        SELECT key, value, 'unknown', description FROM taxonomy_old;
+        INSERT INTO taxonomy (id, key, value, node_type, label, description)
+        SELECT
+          id,
+          key,
+          value,
+          ${nodeTypeValue},
+          ${labelExpr},
+          description
+        FROM taxonomy_old;
         DROP TABLE taxonomy_old;
       `);
       db.exec('PRAGMA foreign_keys = ON');
-      db
-        .prepare(
+      if (!taxonomyHasNodeType) {
+        db
+          .prepare(
+            `
+            INSERT OR IGNORE INTO node_type (node_type, description)
+            VALUES ('unknown', NULL);
           `
-          INSERT OR IGNORE INTO node_type (node_type, description)
-          VALUES ('unknown', NULL);
-        `
-        )
-        .run();
+          )
+          .run();
+      }
     }
   }
   const hasNodeTaxonomy = db

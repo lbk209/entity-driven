@@ -7,9 +7,9 @@ This file captures context so we can continue quickly next time.
 Minimal Next.js App Router app with SQLite for local testing. Features:
 - Create users
 - Submit and edit reviews linked to entities (inline creation supported)
-- Filter reviews by linked entity name terms
+- Filter reviews by linked node name/id, taxonomy label, and user id
 - Review previews use full content; entity badges are inline and mobile clamps to two lines
-- Node review stats page at `/node-review-stats` with server-side node-name search
+- Node review stats page at `/node-review-stats` with server-side node-name search, label filters, and sortable columns
 
 ## Stack
 
@@ -24,10 +24,15 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 - SQLite init + preview helper: `lib/db.ts`
 - Schema reference: `lib/schema.sql`
 - API routes:
+  - `app/api/admin/reviews/route.ts`
+  - `app/api/edge-relations/route.ts`
   - `app/api/user/route.ts`
   - `app/api/review/route.ts`
   - `app/api/reviews/route.ts`
   - `app/api/entities/route.ts`
+  - `app/api/node-type/route.ts`
+  - `app/api/taxonomy/route.ts`
+  - `app/api/node-taxonomy/route.ts`
   - `app/api/nodes/route.ts`
   - `app/api/nodes/merge/route.ts`
   - `app/api/edges/route.ts`
@@ -63,17 +68,17 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Entity picker uses autocomplete suggestions and stores the exact user-entered name.
 - Review details show the entity badge before content with an edit action.
 - Reviews store `entity_name` directly with an optional `node_id` anchor.
-- Search/filter resolves via `review.entity_name`.
-- Entity Reviews search uses `node_name` (server-side); API accepts `node` (id) and `node_name` (name).
-- Admin page for nodes/edges/reference management at `/admin` with merge workflow.
+- Search/filter resolves via `nodes.name`/`review.node_id`, plus taxonomy labels and user IDs.
+- Entity Reviews API accepts `node` (id), `node_name` (name), `label`, and `user`.
+- Admin page for nodes/edges/taxonomy/reviews/reference management at `/admin` with merge workflow.
 - Review edit supports delete with user/password confirmation.
 - Notebook for data review: `review_app_sqlite.ipynb`.
-- Admin page behavior: tabs for nodes/edges/reference are a minimal underline style, tabs + active form/search live in a fixed header, edit/insert forms replace the search/insert row, list rows scroll/snap in their own panel, delete requires confirm (stronger if referenced), edit can switch by clicking another row, rows truncate long values for alignment, and edge list columns now keep parent/child widths consistent.
+- Admin page behavior: tabs for nodes/edges/taxonomy/reviews/reference are a minimal underline style, tabs + active form/search live in a fixed header, edit/insert forms replace the search/insert row, list rows scroll/snap in their own panel, delete requires confirm (stronger if referenced), edit can switch by clicking another row, rows truncate long values for alignment, and edge list columns now keep parent/child widths consistent.
 - Admin nodes: search filter supports field selection; insert forms keep open after save; draft selects show gray placeholder text; edit cancel buttons are last in row; node type inputs use inline suggestions populated from existing types.
 - Admin edges: search filter supports parent/child/relation selection plus related traversal; insert forms keep open after save; draft parent/child/relation selects use placeholders.
 - Edge relations include allowed parent/child node type lists stored as JSON strings, plus description, UI priority, and max suggestions; edge inserts/updates validate parent/child node types against these lists.
-- Admin Reference tab uses radio buttons to switch between edge relations and node types views; relation list wraps parent/child types and vertically centers row text; relation edit row supports multi-select type pickers and shows the relation description in a compact textarea below the form row.
-- Entity Reviews filter: search uses a custom suggestion dropdown with max-height styling; suggestions show on focus and filter as you type.
+- Admin Reference tab uses radio buttons to switch between edge relations, node types, and taxonomy views; relation list wraps parent/child types and vertically centers row text; relation edit row supports multi-select type pickers and shows the relation description in a compact textarea below the form row.
+- Entity Reviews filter: node search uses a custom suggestion dropdown with max-height styling; suggestions show on focus and filter as you type; label badges and user-id filtering are supported.
 
 ## Schema
 
@@ -127,6 +132,7 @@ CREATE TABLE IF NOT EXISTS taxonomy (
   key TEXT NOT NULL,
   value TEXT NOT NULL,
   node_type TEXT NOT NULL,
+  label TEXT NOT NULL UNIQUE,
   description TEXT,
   UNIQUE(key, value, node_type),
   FOREIGN KEY (node_type) REFERENCES node_type(node_type)
@@ -182,7 +188,7 @@ CREATE INDEX IF NOT EXISTS idx_node_review_stats_bayes_score
 ## Quick Context (No File Reads Needed)
 
 - Admin UI path: `/admin`
-- Tables: `user`, `review`, `review_sentiment`, `node_review_stats`, `nodes`, `edges`, `edge_relations`, `node_type`
+- Tables: `user`, `review`, `review_sentiment`, `node_review_stats`, `nodes`, `edges`, `edge_relations`, `node_type`, `taxonomy`, `node_taxonomy`
 - Nodes/edges use the same inline form layout as insert, with Update/Cancel/Delete.
 - Delete confirmation always appears; if referenced by reviews/edges, message is stronger
 - Merge nodes reassigns reviews and edges in a single transaction

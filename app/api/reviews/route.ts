@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const nodeIdRaw = searchParams.get('node');
   const nodeName = searchParams.get('node_name');
+  const label = searchParams.get('label')?.trim() || '';
   const userId = searchParams.get('user');
   const nodeId = nodeIdRaw ? Number(nodeIdRaw) : null;
   const terms = nodeName
@@ -31,59 +32,42 @@ export async function GET(request: Request) {
     node_name: string | null;
   }> = [];
 
+  const whereClauses: string[] = [];
+  const params: Array<string | number> = [];
   if (Number.isFinite(nodeId)) {
-    const userClause = userFilter ? 'AND u.user_id = ?' : '';
-    rows = db
-      .prepare(
-        `
-        SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               r.entity_name,
-               n.name AS node_name
-        FROM review r
-        JOIN user u ON u.id = r.user_id
-        LEFT JOIN nodes n ON n.id = r.node_id
-        WHERE r.node_id = ?
-        ${userClause}
-        ORDER BY COALESCE(r.updated_at, r.created_at) DESC
-      `
-      )
-      .all(nodeId, ...(userFilter ? [userFilter] : []));
-  } else if (terms.length > 0) {
-    const whereClause = terms.map(() => 'LOWER(n.name) LIKE ?').join(' AND ');
-    const params = terms.map((term) => `%${term}%`);
-    const userClause = userFilter ? 'AND u.user_id = ?' : '';
-    rows = db
-      .prepare(
-        `
-        SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               r.entity_name,
-               n.name AS node_name
-        FROM review r
-        JOIN user u ON u.id = r.user_id
-        LEFT JOIN nodes n ON n.id = r.node_id
-        WHERE (${whereClause})
-        ${userClause}
-        ORDER BY COALESCE(r.updated_at, r.created_at) DESC
-      `
-    )
-    .all(...params, ...(userFilter ? [userFilter] : []));
-  } else {
-    const userClause = userFilter ? 'WHERE u.user_id = ?' : '';
-    rows = db
-      .prepare(
-        `
-        SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-               r.entity_name,
-               n.name AS node_name
-        FROM review r
-        JOIN user u ON u.id = r.user_id
-        LEFT JOIN nodes n ON n.id = r.node_id
-        ${userClause}
-        ORDER BY COALESCE(r.updated_at, r.created_at) DESC
-      `
-      )
-      .all(...(userFilter ? [userFilter] : []));
+    whereClauses.push('r.node_id = ?');
+    params.push(nodeId as number);
   }
+  if (label) {
+    whereClauses.push('t.label = ?');
+    params.push(label);
+  }
+  if (terms.length > 0) {
+    whereClauses.push(terms.map(() => 'LOWER(n.name) LIKE ?').join(' AND '));
+    params.push(...terms.map((term) => `%${term}%`));
+  }
+  if (userFilter) {
+    whereClauses.push('u.user_id = ?');
+    params.push(userFilter);
+  }
+
+  const whereClause = whereClauses.length > 0 ? whereClauses.join(' AND ') : '1=1';
+  rows = db
+    .prepare(
+      `
+      SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
+             r.entity_name,
+             n.name AS node_name
+      FROM review r
+      JOIN user u ON u.id = r.user_id
+      LEFT JOIN nodes n ON n.id = r.node_id
+      ${label ? 'JOIN node_taxonomy nt ON nt.node_id = r.node_id' : ''}
+      ${label ? 'JOIN taxonomy t ON t.id = nt.taxonomy_id' : ''}
+      WHERE ${whereClause}
+      ORDER BY COALESCE(r.updated_at, r.created_at) DESC
+    `
+    )
+    .all(...params);
 
   const reviews: Array<{
     id: number;
@@ -151,5 +135,20 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ reviews });
+  const labels = db
+    .prepare(
+      `
+      SELECT t.label,
+             COUNT(DISTINCT r.node_id) AS node_count
+      FROM review r
+      JOIN node_taxonomy nt ON nt.node_id = r.node_id
+      JOIN taxonomy t ON t.id = nt.taxonomy_id
+      GROUP BY t.label
+      ORDER BY node_count DESC, t.label ASC
+      LIMIT 5
+    `
+    )
+    .all();
+
+  return NextResponse.json({ reviews, labels });
 }

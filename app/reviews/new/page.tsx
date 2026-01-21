@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import ReviewForm from '../ReviewForm';
+import BackButton from '../BackButton';
 
 export default function NewReviewPage() {
   return (
@@ -9,9 +9,9 @@ export default function NewReviewPage() {
           <h1>Write a review</h1>
           <small>User ID and password are required. New users are created automatically.</small>
         </div>
-        <Link href="/" className="button-link button-link--ghost">
-          Back to home
-        </Link>
+        <div className="button-row page-header__actions">
+          <BackButton className="button-link button-link--ghost" />
+        </div>
       </div>
 
       <ReviewForm mode="create" />
