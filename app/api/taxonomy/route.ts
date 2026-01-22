@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getSessionUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/authorization';
 
 export const runtime = 'nodejs';
 
@@ -44,6 +46,10 @@ function parseTaxonomyUpdatePayload(body: unknown) {
 }
 
 export async function GET() {
+  const sessionUser = getSessionUser();
+  if (!isAdmin(sessionUser)) {
+    return NextResponse.json({ error: 'admin access required' }, { status: 403 });
+  }
   const db = getDb();
   const rows = db
     .prepare(
@@ -59,6 +65,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!isAdmin(sessionUser)) {
+    return NextResponse.json({ error: 'admin access required' }, { status: 403 });
+  }
   const body = await request.json().catch(() => null);
   const payload = parseTaxonomyPayload(body);
   if (!payload) {
@@ -107,6 +117,10 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!isAdmin(sessionUser)) {
+    return NextResponse.json({ error: 'admin access required' }, { status: 403 });
+  }
   const body = await request.json().catch(() => null);
   const payload = parseTaxonomyUpdatePayload(body);
   if (!payload) {
@@ -162,6 +176,10 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!isAdmin(sessionUser)) {
+    return NextResponse.json({ error: 'admin access required' }, { status: 403 });
+  }
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return NextResponse.json(

@@ -63,7 +63,7 @@ h1 {
 
 .page-header {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 16px;
   align-items: center;
   justify-content: space-between;
@@ -72,6 +72,48 @@ h1 {
 
 .page-header__actions {
   margin-left: auto;
+  overflow-x: auto;
+}
+
+.page-header__actions .button-row {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.page-header > div > h1 {
+  margin-bottom: 0;
+  
+}
+
+.page-header > div > small {
+  display: block;
+
+}
+
+.page-header--stacked {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "title actions"
+    "description actions";
+  row-gap: 1px;
+  align-items: center;
+}
+
+.page-header--stacked .page-header__title {
+  grid-area: title;
+}
+
+.page-header--stacked .page-header__actions {
+  grid-area: actions;
+  justify-self: end;
+  align-self: start;
+}
+
+.page-header--stacked .page-header__description {
+  grid-area: description;
+  display: block;
+  margin: 0;
 }
 
 .button-row {
@@ -700,7 +742,8 @@ textarea {
   flex-wrap: nowrap;
   gap: 8px;
   margin-bottom: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .badge-row .badge {
@@ -793,6 +836,11 @@ button {
   align-items: center;
 }
 
+.filter-row--inline {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
 .filter-row input {
   flex: 1;
   min-width: 0;
@@ -803,12 +851,82 @@ button {
   flex: 0 0 auto;
 }
 
+.auth-section {
+  display: flex;
+  justify-content: center;
+}
+
+.scope-toggle {
+  display: inline-flex;
+  border: 1px solid #d9d9d9;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.scope-toggle__button {
+  background: #fff;
+  border: none;
+  color: #1f1f1f;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.scope-toggle__button + .scope-toggle__button {
+  border-left: 1px solid #e3e3e3;
+}
+
+.scope-toggle__button--active {
+  background: #1f1f1f;
+  color: #fff;
+}
+
+.scope-toggle__button:focus-visible {
+  outline: 2px solid #1f1f1f;
+  outline-offset: 2px;
+}
+
+.auth-card {
+  width: min(420px, 92vw);
+  background: #f6f6f6;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.auth-card h1 {
+  margin-bottom: 8px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
 .clear-button {
   background: #fff;
   color: #1f1f1f;
   border: 1px solid #ddd;
   padding: 6px 12px;
   white-space: nowrap;
+}
+
+.clear-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .review-user {

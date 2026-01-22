@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getSessionUser } from '@/lib/auth';
+import { parseReviewFilters } from '@/lib/reviewFilters';
+import { NODE_REVIEW_LABEL_LIMIT } from '@/lib/constants';
 
 export const runtime = 'nodejs';
 
@@ -17,27 +20,28 @@ type NodeReviewLabelRow = {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const nodeName = searchParams.get('node_name');
-  const label = searchParams.get('label')?.trim() || '';
+  const sessionUser = getSessionUser();
+  const { scope, label, nodeNameTerms } = parseReviewFilters(searchParams, {
+    isLoggedIn: Boolean(sessionUser),
+    isAdmin: sessionUser?.role === 'admin'
+  });
   const sortKey = searchParams.get('sort_key') || '';
   const sortDirRaw = searchParams.get('sort_dir') || '';
   const sortDir = sortDirRaw.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
-  const terms = nodeName
-    ? nodeName
-        .toLowerCase()
-        .split(/\s+/)
-        .map((term) => term.trim())
-        .filter(Boolean)
-    : [];
 
   const db = getDb();
   const labelClause = label ? 'AND t.label = ?' : '';
-  const nameClause = terms.length > 0
-    ? `AND ${terms.map(() => 'LOWER(n.name) LIKE ?').join(' AND ')}`
+  const nameClause = nodeNameTerms.length > 0
+    ? `AND ${nodeNameTerms.map(() => 'LOWER(n.name) LIKE ?').join(' AND ')}`
     : '';
+  const scopeClause =
+    scope === 'my' && sessionUser
+      ? 'AND EXISTS (SELECT 1 FROM review r WHERE r.node_id = nrs.node_id AND r.user_id = ?)'
+      : '';
   const params = [
     ...(label ? [label] : []),
-    ...terms.map((term) => `%${term}%`)
+    ...nodeNameTerms.map((term) => `%${term}%`),
+    ...(scope === 'my' && sessionUser ? [sessionUser.id] : [])
   ];
   const orderBy = (() => {
     if (sortKey === 'name') {
@@ -66,6 +70,7 @@ export async function GET(request: Request) {
       WHERE 1=1
       ${labelClause}
       ${nameClause}
+      ${scopeClause}
       ORDER BY ${orderBy}
     `
     )
@@ -79,12 +84,14 @@ export async function GET(request: Request) {
       FROM node_review_stats nrs
       JOIN node_taxonomy nt ON nt.node_id = nrs.node_id
       JOIN taxonomy t ON t.id = nt.taxonomy_id
+      ${scopeClause ? 'WHERE 1=1' : ''}
+      ${scopeClause}
       GROUP BY t.label
       ORDER BY node_count DESC, t.label ASC
-      LIMIT 5
+      LIMIT ${NODE_REVIEW_LABEL_LIMIT}
     `
     )
-    .all() as NodeReviewLabelRow[];
+    .all(...(scope === 'my' && sessionUser ? [sessionUser.id] : [])) as NodeReviewLabelRow[];
 
   return NextResponse.json({ stats: rows, labels: labelRows });
 }

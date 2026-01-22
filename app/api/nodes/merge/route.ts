@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getSessionUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/authorization';
 
 export const runtime = 'nodejs';
 
@@ -14,6 +16,10 @@ function parseMergePayload(body: unknown) {
 }
 
 export async function POST(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!isAdmin(sessionUser)) {
+    return NextResponse.json({ error: 'admin access required' }, { status: 403 });
+  }
   const body = await request.json().catch(() => null);
   const payload = parseMergePayload(body);
   if (!payload) {

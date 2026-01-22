@@ -1,9 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import LabelBadgeRow, { buildLabelBadges } from '../components/LabelBadgeRow';
+import AuthButton from '../components/AuthButton';
+import NodeNameSearch from '../components/NodeNameSearch';
+import { useSession } from '../components/useSession';
+import { parseReviewFilters } from '@/lib/reviewFilters';
+import ScopeToggle from '../components/ScopeToggle';
+import { NODE_REVIEW_LABEL_LIMIT } from '@/lib/constants';
 
 type SortDirection = 'asc' | 'desc';
 type SortState<T extends string> = { key: T; direction: SortDirection };
@@ -39,18 +45,36 @@ function formatScore(value: number) {
 
 export default function NodeReviewStatsPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { user } = useSession();
   const [stats, setStats] = useState<NodeReviewStatRow[]>([]);
   const [labels, setLabels] = useState<NodeReviewLabelRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterNode, setFilterNode] = useState('');
-  const [selectedLabel, setSelectedLabel] = useState('All');
-  const [sort, setSort] = useState<SortState<'name' | 'review_count' | 'bayes_score'>>({
-    key: 'review_count',
-    direction: 'desc'
-  });
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
+  const searchParamString = searchParams.toString();
+
+  const sortKeyParam = searchParams.get('sort_key');
+  const sortDirParam = searchParams.get('sort_dir');
+
+  const { scope: effectiveScope, label: effectiveLabel, nodeName: nodeNameParam } = useMemo(
+    () =>
+      parseReviewFilters(searchParams, {
+        isLoggedIn: Boolean(user),
+        isAdmin: user?.role === 'admin'
+      }),
+    [searchParams, user]
+  );
+  const sort = useMemo<SortState<'name' | 'review_count' | 'bayes_score'>>(() => {
+    const key =
+      sortKeyParam === 'name' || sortKeyParam === 'bayes_score' || sortKeyParam === 'review_count'
+        ? sortKeyParam
+        : 'review_count';
+    const direction = sortDirParam === 'asc' ? 'asc' : 'desc';
+    return { key, direction };
+  }, [sortDirParam, sortKeyParam]);
 
   useEffect(() => {
     let isActive = true;
@@ -59,14 +83,9 @@ export default function NodeReviewStatsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const trimmed = filterNode.trim();
-        const params = new URLSearchParams();
-        if (selectedLabel !== 'All') params.set('label', selectedLabel);
-        if (trimmed) params.set('node_name', trimmed);
-        params.set('sort_key', sort.key);
-        params.set('sort_dir', sort.direction);
-        const query = params.toString();
-        const url = query ? `/api/node-review-stats?${query}` : '/api/node-review-stats';
+        const url = searchParamString
+          ? `/api/node-review-stats?${searchParamString}`
+          : '/api/node-review-stats';
         const res = await fetch(url);
         if (!res.ok) {
           throw new Error('Failed to load node review stats');
@@ -94,7 +113,7 @@ export default function NodeReviewStatsPage() {
     return () => {
       isActive = false;
     };
-  }, [filterNode, selectedLabel, sort]);
+  }, [searchParamString, user]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -110,7 +129,47 @@ export default function NodeReviewStatsPage() {
     return () => observer.disconnect();
   }, []);
 
-  const allLabelBadges = useMemo(() => buildLabelBadges(labels), [labels]);
+  function updateQuery(next: {
+    scope?: string | null;
+    label?: string | null;
+    node_name?: string | null;
+    sort_key?: string | null;
+    sort_dir?: string | null;
+  }) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next.scope) {
+      params.set('scope', next.scope);
+    } else if (next.scope === null) {
+      params.delete('scope');
+    }
+    if (next.label && next.label.toLowerCase() !== 'all') {
+      params.set('label', next.label);
+    } else if (next.label !== undefined) {
+      params.delete('label');
+    }
+    if (next.node_name) {
+      params.set('node_name', next.node_name);
+    } else if (next.node_name !== undefined) {
+      params.delete('node_name');
+    }
+    if (next.sort_key) {
+      params.set('sort_key', next.sort_key);
+    } else if (next.sort_key === null) {
+      params.delete('sort_key');
+    }
+    if (next.sort_dir) {
+      params.set('sort_dir', next.sort_dir);
+    } else if (next.sort_dir === null) {
+      params.delete('sort_dir');
+    }
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }
+
+  const allLabelBadges = useMemo(
+    () => buildLabelBadges(labels, NODE_REVIEW_LABEL_LIMIT),
+    [labels]
+  );
 
   return (
     <>
@@ -120,40 +179,35 @@ export default function NodeReviewStatsPage() {
             <h1>Node Review Stats</h1>
             <small>Browse cached node scores used for ranking.</small>
           </div>
-          <div className="button-row page-header__actions">
-            <Link href="/" className="button-link">
-              All reviews
-            </Link>
-            <Link href="/reviews/new" className="button-link">
-              Write review
-            </Link>
+          <div className="page-header__actions">
+            <div className="button-row">
+              <Link href="/entity-reviews" className="button-link">
+                All reviews
+              </Link>
+              <Link href="/reviews/new" className="button-link">
+                Write review
+              </Link>
+              <AuthButton />
+            </div>
           </div>
         </div>
         <section className="section">
-          <LabelBadgeRow
-            badges={allLabelBadges}
-            selectedLabel={selectedLabel}
-            onSelect={setSelectedLabel}
-          />
+          <div className="filter-row filter-row--inline">
+            <ScopeToggle value={effectiveScope} onChange={(scope) => updateQuery({ scope })} />
+            <LabelBadgeRow
+              badges={allLabelBadges}
+              selectedLabel={effectiveLabel}
+              onSelect={(label) => updateQuery({ label })}
+            />
+          </div>
           <div className="filter-row">
-            <div className="entity-input-wrap">
-              <input
-                id="node-search"
-                aria-label="Filter by node name"
-                placeholder="Type node name"
-                value={filterNode}
-                onChange={(event) => setFilterNode(event.target.value)}
-              />
-            </div>
-            {filterNode.trim() && (
-              <button
-                className="clear-button"
-                type="button"
-                onClick={() => setFilterNode('')}
-              >
-                Clear
-              </button>
-            )}
+            <NodeNameSearch
+              value={nodeNameParam}
+              onCommit={(value) =>
+                updateQuery({ node_name: value.trim() ? value : null })
+              }
+              onClear={() => updateQuery({ node_name: null })}
+            />
           </div>
         </section>
       </div>
@@ -169,11 +223,14 @@ export default function NodeReviewStatsPage() {
             <>
               <div className="row review-footer admin-row admin-row--header admin-row--data admin-row--data-node-review-stats">
                 <div>
-                  <button
-                    type="button"
-                    className="admin-sort"
-                    onClick={() => setSort((prev) => nextSort(prev, 'name'))}
-                  >
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => {
+                        const next = nextSort(sort, 'name');
+                        updateQuery({ sort_key: next.key, sort_dir: next.direction });
+                      }}
+                    >
                     Node
                     <span className="admin-sort__indicator">
                       {sortIndicator(sort, 'name')}
@@ -181,11 +238,14 @@ export default function NodeReviewStatsPage() {
                   </button>
                 </div>
                 <div>
-                  <button
-                    type="button"
-                    className="admin-sort"
-                    onClick={() => setSort((prev) => nextSort(prev, 'review_count'))}
-                  >
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => {
+                        const next = nextSort(sort, 'review_count');
+                        updateQuery({ sort_key: next.key, sort_dir: next.direction });
+                      }}
+                    >
                     Review Count
                     <span className="admin-sort__indicator">
                       {sortIndicator(sort, 'review_count')}
@@ -193,11 +253,14 @@ export default function NodeReviewStatsPage() {
                   </button>
                 </div>
                 <div>
-                  <button
-                    type="button"
-                    className="admin-sort"
-                    onClick={() => setSort((prev) => nextSort(prev, 'bayes_score'))}
-                  >
+                    <button
+                      type="button"
+                      className="admin-sort"
+                      onClick={() => {
+                        const next = nextSort(sort, 'bayes_score');
+                        updateQuery({ sort_key: next.key, sort_dir: next.direction });
+                      }}
+                    >
                     Bayes Score
                     <span className="admin-sort__indicator">
                       {sortIndicator(sort, 'bayes_score')}

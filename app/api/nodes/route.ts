@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getSessionUser } from '@/lib/auth';
+import { canModifyNode, isAdmin } from '@/lib/authorization';
 
 export const runtime = 'nodejs';
 
@@ -56,6 +58,13 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: 'login required' }, { status: 401 });
+  }
+  if (!isAdmin(sessionUser)) {
+    return NextResponse.json({ error: 'admin access required' }, { status: 403 });
+  }
   const body = await request.json().catch(() => null);
   const payload = parseNodeCreatePayload(body);
   if (!payload) {
@@ -102,6 +111,10 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: 'login required' }, { status: 401 });
+  }
   const body = await request.json().catch(() => null);
   const payload = parseNodeUpdatePayload(body);
   if (!payload) {
@@ -109,6 +122,9 @@ export async function PUT(request: Request) {
       { error: 'id, name, type, and original_id required' },
       { status: 400 }
     );
+  }
+  if (!isAdmin(sessionUser) && !canModifyNode(sessionUser, payload.originalId)) {
+    return NextResponse.json({ error: 'node not linked to user reviews' }, { status: 403 });
   }
 
   const db = getDb();
@@ -150,6 +166,10 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: 'login required' }, { status: 401 });
+  }
   const body = await request.json().catch(() => null);
   const payload = parseNodeDeletePayload(body);
   if (!payload) {
@@ -157,6 +177,9 @@ export async function DELETE(request: Request) {
       { error: 'id, name, and type required' },
       { status: 400 }
     );
+  }
+  if (!isAdmin(sessionUser) && !canModifyNode(sessionUser, payload.id)) {
+    return NextResponse.json({ error: 'node not linked to user reviews' }, { status: 403 });
   }
 
   const db = getDb();

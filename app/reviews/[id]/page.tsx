@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getDb } from '@/lib/db';
+import { getSessionUser } from '@/lib/auth';
+import { canEditReview } from '@/lib/authorization';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,6 +60,8 @@ export default function ReviewDetailPage({ params }: { params: { id: string } })
   if (!review) {
     notFound();
   }
+  const sessionUser = getSessionUser();
+  const canEdit = canEditReview(sessionUser, review.user_id);
 
   return (
     <>
@@ -70,10 +74,12 @@ export default function ReviewDetailPage({ params }: { params: { id: string } })
           </small>
         </div>
         <div className="button-row">
-          <Link href={`/reviews/${review.id}/edit`} className="button-link">
-            Edit
-          </Link>
-          <Link href="/" className="button-link button-link--ghost">
+          {canEdit && (
+            <Link href={`/reviews/${review.id}/edit`} className="button-link">
+              Edit
+            </Link>
+          )}
+          <Link href="/entity-reviews" className="button-link button-link--ghost">
             Back
           </Link>
         </div>

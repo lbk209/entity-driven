@@ -1,23 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getDb, previewText } from '@/lib/db';
+import { getSessionUser } from '@/lib/auth';
+import { parseReviewFilters } from '@/lib/reviewFilters';
+import { ENTITY_REVIEW_LABEL_LIMIT } from '@/lib/constants';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
+  const sessionUser = getSessionUser();
   const { searchParams } = new URL(request.url);
-  const nodeIdRaw = searchParams.get('node');
-  const nodeName = searchParams.get('node_name');
-  const label = searchParams.get('label')?.trim() || '';
-  const userId = searchParams.get('user');
-  const nodeId = nodeIdRaw ? Number(nodeIdRaw) : null;
-  const terms = nodeName
-    ? nodeName
-        .toLowerCase()
-        .split(/\s+/)
-        .map((term) => term.trim())
-        .filter(Boolean)
-    : [];
-  const userFilter = userId ? userId.trim() : '';
+  const { scope, label, nodeNameTerms } = parseReviewFilters(searchParams, {
+    isLoggedIn: Boolean(sessionUser),
+    isAdmin: sessionUser?.role === 'admin'
+  });
 
   const db = getDb();
   const confidenceFloorRaw = process.env.REVIEW_SENTIMENT_CONFIDENCE_MIN ?? '0.15';
@@ -34,21 +29,17 @@ export async function GET(request: Request) {
 
   const whereClauses: string[] = [];
   const params: Array<string | number> = [];
-  if (Number.isFinite(nodeId)) {
-    whereClauses.push('r.node_id = ?');
-    params.push(nodeId as number);
+  if (scope === 'my' && sessionUser) {
+    whereClauses.push('r.user_id = ?');
+    params.push(sessionUser.id);
   }
   if (label) {
-    whereClauses.push('t.label = ?');
+    whereClauses.push('r.entity_name = ?');
     params.push(label);
   }
-  if (terms.length > 0) {
-    whereClauses.push(terms.map(() => 'LOWER(n.name) LIKE ?').join(' AND '));
-    params.push(...terms.map((term) => `%${term}%`));
-  }
-  if (userFilter) {
-    whereClauses.push('u.user_id = ?');
-    params.push(userFilter);
+  if (nodeNameTerms.length > 0) {
+    whereClauses.push(nodeNameTerms.map(() => 'LOWER(n.name) LIKE ?').join(' AND '));
+    params.push(...nodeNameTerms.map((term) => `%${term}%`));
   }
 
   const whereClause = whereClauses.length > 0 ? whereClauses.join(' AND ') : '1=1';
@@ -61,8 +52,6 @@ export async function GET(request: Request) {
       FROM review r
       JOIN user u ON u.id = r.user_id
       LEFT JOIN nodes n ON n.id = r.node_id
-      ${label ? 'JOIN node_taxonomy nt ON nt.node_id = r.node_id' : ''}
-      ${label ? 'JOIN taxonomy t ON t.id = nt.taxonomy_id' : ''}
       WHERE ${whereClause}
       ORDER BY COALESCE(r.updated_at, r.created_at) DESC
     `
@@ -138,17 +127,16 @@ export async function GET(request: Request) {
   const labels = db
     .prepare(
       `
-      SELECT t.label,
-             COUNT(DISTINCT r.node_id) AS node_count
+      SELECT r.entity_name AS label,
+             COUNT(*) AS node_count
       FROM review r
-      JOIN node_taxonomy nt ON nt.node_id = r.node_id
-      JOIN taxonomy t ON t.id = nt.taxonomy_id
-      GROUP BY t.label
-      ORDER BY node_count DESC, t.label ASC
-      LIMIT 5
+      ${scope === 'my' && sessionUser ? 'WHERE r.user_id = ?' : ''}
+      GROUP BY r.entity_name
+      ORDER BY node_count DESC, r.entity_name ASC
+      LIMIT ${ENTITY_REVIEW_LABEL_LIMIT}
     `
     )
-    .all();
+    .all(...(scope === 'my' && sessionUser ? [sessionUser.id] : []));
 
   return NextResponse.json({ reviews, labels });
 }

@@ -63,6 +63,7 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - SQLite file is created at `data/app.sqlite` on first API call.
 - `.gitignore` excludes `node_modules/`, `.next/`, `.next.bak/`, and `data/app.sqlite`.
 - Passwords are plain text (testing only).
+- Login redirect enforces role-aware default scope on success: users land with `scope=my`, admins with `scope=all`, while preserving other query params.
 - Review updates record `updated_at` and list sorting uses updated time.
 - Review list shows real user IDs, entity badges, and uses a snap-scrolling list without a section header.
 - Entity picker uses autocomplete suggestions and stores the exact user-entered name.
@@ -86,7 +87,8 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 CREATE TABLE IF NOT EXISTS user (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL UNIQUE,
-  password TEXT NOT NULL
+  password TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user'
 );
 
 CREATE TABLE IF NOT EXISTS review (

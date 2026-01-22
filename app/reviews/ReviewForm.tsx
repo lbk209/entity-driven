@@ -10,7 +10,6 @@ type Entity = {
 };
 
 type ReviewFormData = {
-  user_id: string;
   content: string;
   entity_name: string;
   node_id?: number | null;
@@ -25,8 +24,6 @@ type ReviewFormProps = {
 export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormProps) {
   const router = useRouter();
   const [entities, setEntities] = useState<Entity[]>([]);
-  const [reviewUserId, setReviewUserId] = useState(initialData?.user_id ?? '');
-  const [reviewPassword, setReviewPassword] = useState('');
   const [reviewContent, setReviewContent] = useState(initialData?.content ?? '');
   const [entityName, setEntityName] = useState(initialData?.entity_name ?? '');
   const [entityNodeId, setEntityNodeId] = useState<number | null>(
@@ -58,15 +55,10 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
     }
     if (!window.confirm('Delete this review?')) return;
     const res = await fetch(`/api/review?id=${reviewId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: reviewUserId,
-        password: reviewPassword
-      })
+      method: 'DELETE'
     });
     if (res.ok) {
-      router.push('/');
+      router.push('/entity-reviews');
       return;
     }
     const data = await res.json().catch(() => ({}));
@@ -83,8 +75,6 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
     }
 
     const payload = {
-      user_id: reviewUserId,
-      password: reviewPassword,
       content: reviewContent,
       entity_name: entityName,
       node_id: entityNodeId
@@ -173,32 +163,17 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
 
         <div className={`row review-footer ${mode === 'edit' ? 'review-footer--edit' : ''}`}>
           <div>
-            <label htmlFor="review-user-id">User ID</label>
-            <input
-              id="review-user-id"
-              value={reviewUserId}
-              onChange={(event) => setReviewUserId(event.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="review-password">Password</label>
-            <input
-              id="review-password"
-              type="password"
-              value={reviewPassword}
-              onChange={(event) => setReviewPassword(event.target.value)}
-              required
-            />
-          </div>
-          <div>
             <label>&nbsp;</label>
             <button type="submit">{mode === 'edit' ? 'Update' : 'Save review'}</button>
           </div>
           {mode === 'edit' && (
             <div>
               <label>&nbsp;</label>
-              <button type="button" className="button-link button-link--ghost" onClick={handleDeleteReview}>
+              <button
+                type="button"
+                className="button-link button-link--ghost"
+                onClick={handleDeleteReview}
+              >
                 Delete
               </button>
             </div>

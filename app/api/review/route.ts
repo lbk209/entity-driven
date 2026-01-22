@@ -1,26 +1,24 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getSessionUser } from '@/lib/auth';
+import { canEditReview } from '@/lib/authorization';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: 'login required' }, { status: 401 });
+  }
   const body = await request.json().catch(() => null);
-  if (!body?.user_id || !body?.password || !body?.content || !body?.entity_name) {
+  if (!body?.content || !body?.entity_name) {
     return NextResponse.json(
-      { error: 'user_id, password, content, and entity_name required' },
+      { error: 'content and entity_name required' },
       { status: 400 }
     );
   }
 
   const db = getDb();
-  const userRow = db
-    .prepare('SELECT id, password FROM user WHERE user_id = ?')
-    .get(body.user_id) as { id: number; password: string } | undefined;
-
-  if (userRow && userRow.password !== body.password) {
-    return NextResponse.json({ error: 'invalid user credentials' }, { status: 401 });
-  }
-
   const entityNameRaw = String(body.entity_name);
   if (!entityNameRaw.trim()) {
     return NextResponse.json({ error: 'entity_name required' }, { status: 400 });
@@ -32,14 +30,6 @@ export async function POST(request: Request) {
   }
 
   const tx = db.transaction(() => {
-    let userId = userRow?.id;
-    if (!userId) {
-      const userResult = db
-        .prepare('INSERT INTO user (user_id, password) VALUES (?, ?)')
-        .run(body.user_id, body.password);
-      userId = Number(userResult.lastInsertRowid);
-    }
-
     const now = new Date().toISOString();
     const reviewStmt = db.prepare(
       `INSERT INTO review (user_id, content, node_id, entity_name, created_at, updated_at)
@@ -53,7 +43,14 @@ export async function POST(request: Request) {
         throw new Error('node_id not found');
       }
     }
-    const reviewResult = reviewStmt.run(userId, body.content, nodeId, entityNameRaw, now, now);
+    const reviewResult = reviewStmt.run(
+      sessionUser.id,
+      body.content,
+      nodeId,
+      entityNameRaw,
+      now,
+      now
+    );
     const reviewId = Number(reviewResult.lastInsertRowid);
 
     return reviewId;
@@ -71,6 +68,10 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: 'login required' }, { status: 401 });
+  }
   const { searchParams } = new URL(request.url);
   const reviewIdParam = searchParams.get('id');
   const reviewId = reviewIdParam ? Number(reviewIdParam) : NaN;
@@ -79,22 +80,14 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
-  if (!body?.user_id || !body?.password || !body?.content || !body?.entity_name) {
+  if (!body?.content || !body?.entity_name) {
     return NextResponse.json(
-      { error: 'user_id, password, content, and entity_name required' },
+      { error: 'content and entity_name required' },
       { status: 400 }
     );
   }
 
   const db = getDb();
-  const userRow = db
-    .prepare('SELECT id, password FROM user WHERE user_id = ?')
-    .get(body.user_id) as { id: number; password: string } | undefined;
-
-  if (!userRow || userRow.password !== body.password) {
-    return NextResponse.json({ error: 'invalid user credentials' }, { status: 401 });
-  }
-
   const reviewRow = db
     .prepare('SELECT id, user_id FROM review WHERE id = ?')
     .get(reviewId) as { id: number; user_id: number } | undefined;
@@ -103,7 +96,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'review not found' }, { status: 404 });
   }
 
-  if (reviewRow.user_id !== userRow.id) {
+  if (!canEditReview(sessionUser, reviewRow.user_id)) {
     return NextResponse.json({ error: 'review does not belong to user' }, { status: 403 });
   }
 
@@ -149,6 +142,10 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const sessionUser = getSessionUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: 'login required' }, { status: 401 });
+  }
   const { searchParams } = new URL(request.url);
   const reviewIdParam = searchParams.get('id');
   const reviewId = reviewIdParam ? Number(reviewIdParam) : NaN;
@@ -156,20 +153,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'valid review id required' }, { status: 400 });
   }
 
-  const body = await request.json().catch(() => null);
-  if (!body?.user_id || !body?.password) {
-    return NextResponse.json({ error: 'user_id and password required' }, { status: 400 });
-  }
-
   const db = getDb();
-  const userRow = db
-    .prepare('SELECT id, password FROM user WHERE user_id = ?')
-    .get(body.user_id) as { id: number; password: string } | undefined;
-
-  if (!userRow || userRow.password !== body.password) {
-    return NextResponse.json({ error: 'invalid user credentials' }, { status: 401 });
-  }
-
   const reviewRow = db
     .prepare('SELECT id, user_id FROM review WHERE id = ?')
     .get(reviewId) as { id: number; user_id: number } | undefined;
@@ -178,7 +162,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'review not found' }, { status: 404 });
   }
 
-  if (reviewRow.user_id !== userRow.id) {
+  if (!canEditReview(sessionUser, reviewRow.user_id)) {
     return NextResponse.json({ error: 'review does not belong to user' }, { status: 403 });
   }
 

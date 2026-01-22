@@ -1,13 +1,15 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getDb } from '@/lib/db';
+import { getSessionUser } from '@/lib/auth';
+import { canEditReview } from '@/lib/authorization';
 import ReviewForm from '../../ReviewForm';
 
 export const runtime = 'nodejs';
 
 type ReviewEditData = {
   id: number;
-  user_id: string;
+  user_id: number;
   content: string;
   entity_name: string;
   node_id: number | null;
@@ -18,18 +20,17 @@ function getReviewForEdit(id: number): ReviewEditData | null {
   const row = db
     .prepare(
       `
-      SELECT r.id, r.content, u.user_id,
+      SELECT r.id, r.content, r.user_id,
              r.entity_name,
              r.node_id
       FROM review r
-      JOIN user u ON u.id = r.user_id
       WHERE r.id = ?
     `
     )
     .get(id) as
     | {
         id: number;
-        user_id: string;
+        user_id: number;
         content: string;
         entity_name: string;
         node_id: number | null;
@@ -57,6 +58,13 @@ export default function EditReviewPage({ params }: { params: { id: string } }) {
   if (!review) {
     notFound();
   }
+  const sessionUser = getSessionUser();
+  if (!sessionUser) {
+    redirect(`/login?redirect=${encodeURIComponent(`/reviews/${reviewId}/edit`)}`);
+  }
+  if (!canEditReview(sessionUser, review.user_id)) {
+    redirect(`/reviews/${reviewId}`);
+  }
 
   return (
     <>
@@ -74,7 +82,6 @@ export default function EditReviewPage({ params }: { params: { id: string } }) {
         mode="edit"
         reviewId={review.id}
         initialData={{
-          user_id: review.user_id,
           content: review.content,
           entity_name: review.entity_name,
           node_id: review.node_id

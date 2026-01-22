@@ -12,16 +12,19 @@ type Badge = {
 
 type LabelBadgeRowProps = {
   badges: Badge[];
-  selectedLabel: string;
-  onSelect: (label: string) => void;
+  selectedLabel: string | null;
+  onSelect: (label: string | null) => void;
 };
 
-export function buildLabelBadges<T extends LabelRow>(labels: T[]): Badge[] {
-  const list = labels.map((item) => ({
+export function buildLabelBadges<T extends LabelRow>(
+  labels: T[],
+  maxVisible: number
+): Badge[] {
+  const list = labels.slice(0, maxVisible).map((item) => ({
     label: item.label,
     count: item.node_count
   }));
-  return [{ label: 'All', count: null }, ...list];
+  return list;
 }
 
 export default function LabelBadgeRow({
@@ -40,10 +43,12 @@ export default function LabelBadgeRow({
           }`}
           role="radio"
           aria-checked={selectedLabel === badge.label}
-          onClick={() => onSelect(badge.label)}
-          title={badge.count === null ? 'All' : `${badge.label} (${badge.count})`}
+          onClick={() =>
+            onSelect(selectedLabel === badge.label ? null : badge.label)
+          }
+          title={`${badge.label} (${badge.count ?? 0})`}
         >
-          {badge.count === null ? badge.label : `${badge.label} (${badge.count})`}
+          {`${badge.label} (${badge.count ?? 0})`}
         </button>
       ))}
     </div>

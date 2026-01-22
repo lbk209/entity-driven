@@ -1,7 +1,8 @@
 CREATE TABLE IF NOT EXISTS user (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL UNIQUE,
-  password TEXT NOT NULL
+  password TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user'
 );
 
 CREATE TABLE IF NOT EXISTS review (
@@ -14,6 +15,14 @@ CREATE TABLE IF NOT EXISTS review (
   updated_at TEXT,
   FOREIGN KEY (user_id) REFERENCES user(id),
   FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_session (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES user(id)
 );
 
 CREATE TABLE IF NOT EXISTS node_type (

@@ -1,0 +1,2 @@
+export const ENTITY_REVIEW_LABEL_LIMIT = 5;
+export const NODE_REVIEW_LABEL_LIMIT = 5;

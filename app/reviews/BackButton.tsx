@@ -18,7 +18,7 @@ export default function BackButton({ className = '' }: BackButtonProps) {
           router.back();
           return;
         }
-        router.push('/');
+        router.push('/entity-reviews');
       }}
     >
       Back
