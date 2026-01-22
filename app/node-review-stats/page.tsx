@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import LabelBadgeRow, { buildLabelBadges } from '../components/LabelBadgeRow';
 
 type SortDirection = 'asc' | 'desc';
 type SortState<T extends string> = { key: T; direction: SortDirection };
@@ -109,13 +110,7 @@ export default function NodeReviewStatsPage() {
     return () => observer.disconnect();
   }, []);
 
-  const allLabelBadges = useMemo(() => {
-    const list = labels.map((item) => ({
-      label: item.label,
-      count: item.node_count
-    }));
-    return [{ label: 'All', count: null }, ...list];
-  }, [labels]);
+  const allLabelBadges = useMemo(() => buildLabelBadges(labels), [labels]);
 
   return (
     <>
@@ -135,27 +130,11 @@ export default function NodeReviewStatsPage() {
           </div>
         </div>
         <section className="section">
-          <div className="badge-row" role="radiogroup" aria-label="Filter by taxonomy label">
-            {allLabelBadges.map((badge) => (
-              <button
-                key={badge.label}
-                type="button"
-                className={`badge badge--filter ${
-                  selectedLabel === badge.label ? 'badge--selected' : 'badge--muted'
-                }`}
-                role="radio"
-                aria-checked={selectedLabel === badge.label}
-                onClick={() => setSelectedLabel(badge.label)}
-                title={
-                  badge.count === null
-                    ? 'All'
-                    : `${badge.label} (${badge.count})`
-                }
-              >
-                {badge.count === null ? badge.label : `${badge.label} (${badge.count})`}
-              </button>
-            ))}
-          </div>
+          <LabelBadgeRow
+            badges={allLabelBadges}
+            selectedLabel={selectedLabel}
+            onSelect={setSelectedLabel}
+          />
           <div className="filter-row">
             <div className="entity-input-wrap">
               <input

@@ -704,8 +704,8 @@ textarea {
 }
 
 .badge-row .badge {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  width: fit-content;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
