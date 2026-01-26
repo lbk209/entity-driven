@@ -3,13 +3,14 @@ import { getDb, previewText } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
 import { parseReviewFilters } from '@/lib/reviewFilters';
 import { ENTITY_REVIEW_LABEL_LIMIT } from '@/lib/constants';
+import { getTaxonomyReviewBadges } from '@/lib/reviewBadges';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
   const sessionUser = getSessionUser();
   const { searchParams } = new URL(request.url);
-  const { scope, label, nodeNameTerms } = parseReviewFilters(searchParams, {
+  const { scope, label, nodeId, nodeNameTerms } = parseReviewFilters(searchParams, {
     isLoggedIn: Boolean(sessionUser),
     isAdmin: sessionUser?.role === 'admin'
   });
@@ -34,8 +35,22 @@ export async function GET(request: Request) {
     params.push(sessionUser.id);
   }
   if (label) {
-    whereClauses.push('r.entity_name = ?');
+    whereClauses.push(
+      `
+      EXISTS (
+        SELECT 1
+        FROM node_taxonomy nt
+        JOIN taxonomy t ON t.id = nt.taxonomy_id
+        WHERE nt.node_id = r.node_id
+          AND t.label = ?
+      )
+      `
+    );
     params.push(label);
+  }
+  if (nodeId !== null) {
+    whereClauses.push('r.node_id = ?');
+    params.push(nodeId);
   }
   if (nodeNameTerms.length > 0) {
     whereClauses.push(nodeNameTerms.map(() => 'LOWER(n.name) LIKE ?').join(' AND '));
@@ -124,19 +139,10 @@ export async function GET(request: Request) {
     }
   }
 
-  const labels = db
-    .prepare(
-      `
-      SELECT r.entity_name AS label,
-             COUNT(*) AS node_count
-      FROM review r
-      ${scope === 'my' && sessionUser ? 'WHERE r.user_id = ?' : ''}
-      GROUP BY r.entity_name
-      ORDER BY node_count DESC, r.entity_name ASC
-      LIMIT ${ENTITY_REVIEW_LABEL_LIMIT}
-    `
-    )
-    .all(...(scope === 'my' && sessionUser ? [sessionUser.id] : []));
+  const labels = getTaxonomyReviewBadges(db, {
+    userId: sessionUser?.id ?? null,
+    limit: ENTITY_REVIEW_LABEL_LIMIT
+  });
 
   return NextResponse.json({ reviews, labels });
 }

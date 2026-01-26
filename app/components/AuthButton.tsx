@@ -20,6 +20,11 @@ export default function AuthButton() {
     try {
       await fetch('/api/logout', { method: 'POST' });
       await refresh();
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('scope', 'all');
+      const nextQuery = params.toString();
+      const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+      router.replace(nextUrl);
       router.refresh();
     } finally {
       setIsWorking(false);

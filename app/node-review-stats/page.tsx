@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import LabelBadgeRow, { buildLabelBadges } from '../components/LabelBadgeRow';
+import LabelBadgeRow from '../components/LabelBadgeRow';
 import AuthButton from '../components/AuthButton';
 import NodeNameSearch from '../components/NodeNameSearch';
 import { useSession } from '../components/useSession';
@@ -75,6 +75,12 @@ export default function NodeReviewStatsPage() {
     const direction = sortDirParam === 'asc' ? 'asc' : 'desc';
     return { key, direction };
   }, [sortDirParam, sortKeyParam]);
+
+  const entityReviewsHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('scope', effectiveScope);
+    return `/entity-reviews?${params.toString()}`;
+  }, [effectiveScope]);
 
   useEffect(() => {
     let isActive = true;
@@ -167,7 +173,11 @@ export default function NodeReviewStatsPage() {
   }
 
   const allLabelBadges = useMemo(
-    () => buildLabelBadges(labels, NODE_REVIEW_LABEL_LIMIT),
+    () =>
+      labels.slice(0, NODE_REVIEW_LABEL_LIMIT).map((item) => ({
+        label: item.label,
+        count: item.node_count
+      })),
     [labels]
   );
 
@@ -181,7 +191,7 @@ export default function NodeReviewStatsPage() {
           </div>
           <div className="page-header__actions">
             <div className="button-row">
-              <Link href="/entity-reviews" className="button-link">
+              <Link href={entityReviewsHref} className="button-link">
                 All reviews
               </Link>
               <Link href="/reviews/new" className="button-link">
@@ -275,12 +285,18 @@ export default function NodeReviewStatsPage() {
                   role="button"
                   tabIndex={0}
                   onClick={() => {
-                    router.push(`/?node=${encodeURIComponent(String(row.node_id))}`);
+                    const params = new URLSearchParams();
+                    params.set('scope', effectiveScope);
+                    params.set('node', String(row.node_id));
+                    router.push(`/entity-reviews?${params.toString()}`);
                   }}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter' && event.key !== ' ') return;
                     event.preventDefault();
-                    router.push(`/?node=${encodeURIComponent(String(row.node_id))}`);
+                    const params = new URLSearchParams();
+                    params.set('scope', effectiveScope);
+                    params.set('node', String(row.node_id));
+                    router.push(`/entity-reviews?${params.toString()}`);
                   }}
                 >
                   <div className="admin-cell-wrap">

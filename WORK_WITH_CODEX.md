@@ -9,7 +9,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 - Submit and edit reviews linked to entities (inline creation supported)
 - Filter reviews by linked node name/id, taxonomy label, and user id
 - Review previews use full content; entity badges are inline and mobile clamps to two lines
-- Node review stats page at `/node-review-stats` with server-side node-name search, label filters, and sortable columns
+- Node review stats page at `/node-review-stats` with server-side node-name search, taxonomy label filters, and sortable columns
 
 ## Stack
 
@@ -63,7 +63,8 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - SQLite file is created at `data/app.sqlite` on first API call.
 - `.gitignore` excludes `node_modules/`, `.next/`, `.next.bak/`, and `data/app.sqlite`.
 - Passwords are plain text (testing only).
-- Login redirect enforces role-aware default scope on success: users land with `scope=my`, admins with `scope=all`, while preserving other query params.
+- Login redirect enforces role-aware default scope on success: users land with `scope=my`, admins with `scope=all`; when scope becomes `my`, node-related params (`node`, `node_id`, `node_name`) are stripped.
+- Logout forces `scope=all` in the URL.
 - Review updates record `updated_at` and list sorting uses updated time.
 - Review list shows real user IDs, entity badges, and uses a snap-scrolling list without a section header.
 - Entity picker uses autocomplete suggestions and stores the exact user-entered name.
@@ -71,6 +72,11 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Reviews store `entity_name` directly with an optional `node_id` anchor.
 - Search/filter resolves via `nodes.name`/`review.node_id`, plus taxonomy labels and user IDs.
 - Entity Reviews API accepts `node` (id), `node_name` (name), `label`, and `user`.
+- Entity Reviews node filter UX: `node=ID` deep links resolve to node name and populate the node name search box; the clear button removes `node`, `node_id`, and `node_name`.
+- Node Review Stats row click navigates to Entity Reviews with `scope` and `node` preserved in the URL.
+- Badge semantics are intentionally split:
+  - Entity Reviews badges are review-driven (counts = review totals per taxonomy).
+  - Node Review Stats badges are node-driven (counts = distinct reviewed nodes per taxonomy).
 - Admin page for nodes/edges/taxonomy/reviews/reference management at `/admin` with merge workflow.
 - Review edit supports delete with user/password confirmation.
 - Notebook for data review: `review_app_sqlite.ipynb`.

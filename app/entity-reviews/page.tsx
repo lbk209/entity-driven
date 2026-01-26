@@ -24,7 +24,8 @@ type Review = {
 
 type ReviewLabelRow = {
   label: string;
-  node_count: number;
+  all_count: number;
+  my_count: number;
 };
 
 export default function EntityReviewsPage() {
@@ -39,7 +40,8 @@ export default function EntityReviewsPage() {
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
 
-  const { scope: effectiveScope, label: effectiveLabel, nodeName: nodeNameParam } = useMemo(
+  const { scope: effectiveScope, label: effectiveLabel, nodeId, nodeName: nodeNameParam } =
+    useMemo(
     () =>
       parseReviewFilters(searchParams, {
         isLoggedIn: Boolean(user),
@@ -48,14 +50,28 @@ export default function EntityReviewsPage() {
     [searchParams, user]
   );
 
+  const [resolvedNodeName, setResolvedNodeName] = useState('');
+
   const queryString = useMemo(() => {
     const query = searchParams.toString();
     return query ? `?${query}` : '';
   }, [searchParams]);
 
+  const nodeSearchValue = useMemo(() => {
+    if (nodeNameParam) return nodeNameParam;
+    if (nodeId !== null) return resolvedNodeName;
+    return '';
+  }, [nodeId, nodeNameParam, resolvedNodeName]);
+
+  const nodeReviewStatsHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('scope', effectiveScope);
+    return `/node-review-stats?${params.toString()}`;
+  }, [effectiveScope]);
+
   const allLabelBadges = useMemo(
-    () => buildLabelBadges(labels, ENTITY_REVIEW_LABEL_LIMIT),
-    [labels]
+    () => buildLabelBadges(labels, ENTITY_REVIEW_LABEL_LIMIT, effectiveScope),
+    [effectiveScope, labels]
   );
 
   useEffect(() => {
@@ -102,6 +118,8 @@ export default function EntityReviewsPage() {
     scope?: string;
     label?: string | null;
     node_name?: string | null;
+    node?: string | null;
+    node_id?: string | null;
   }) {
     const params = new URLSearchParams(searchParams.toString());
     if (next.scope) {
@@ -119,9 +137,42 @@ export default function EntityReviewsPage() {
     } else if (next.node_name !== undefined) {
       params.delete('node_name');
     }
+    if (next.node) {
+      params.set('node', next.node);
+    } else if (next.node !== undefined) {
+      params.delete('node');
+    }
+    if (next.node_id) {
+      params.set('node_id', next.node_id);
+    } else if (next.node_id !== undefined) {
+      params.delete('node_id');
+    }
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
   }
+
+  useEffect(() => {
+    let isActive = true;
+    if (nodeId === null || nodeNameParam) {
+      setResolvedNodeName('');
+      return;
+    }
+    fetch('/api/entities')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isActive) return;
+        const entities = (data?.entities ?? []) as Array<{ id: number; name: string }>;
+        const match = entities.find((entity) => entity.id === nodeId);
+        setResolvedNodeName(match?.name ?? '');
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setResolvedNodeName('');
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [nodeId, nodeNameParam]);
 
   return (
     <>
@@ -133,7 +184,7 @@ export default function EntityReviewsPage() {
           </div>
           <div className="page-header__actions">
             <div className="button-row">
-              <Link href="/node-review-stats" className="button-link">
+              <Link href={nodeReviewStatsHref} className="button-link">
                 Node review stats
               </Link>
               <Link href="/reviews/new" className="button-link">
@@ -158,11 +209,15 @@ export default function EntityReviewsPage() {
           </div>
           <div className="filter-row">
             <NodeNameSearch
-              value={nodeNameParam}
+              value={nodeSearchValue}
               onCommit={(value) =>
-                updateQuery({ node_name: value.trim() ? value : null })
+                updateQuery({
+                  node_name: value.trim() ? value : null,
+                  node: null,
+                  node_id: null
+                })
               }
-              onClear={() => updateQuery({ node_name: null })}
+              onClear={() => updateQuery({ node_name: null, node: null, node_id: null })}
             />
           </div>
         </section>

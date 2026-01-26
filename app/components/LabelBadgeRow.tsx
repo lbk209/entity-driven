@@ -2,7 +2,8 @@
 
 type LabelRow = {
   label: string;
-  node_count: number;
+  all_count: number;
+  my_count: number;
 };
 
 type Badge = {
@@ -18,11 +19,12 @@ type LabelBadgeRowProps = {
 
 export function buildLabelBadges<T extends LabelRow>(
   labels: T[],
-  maxVisible: number
+  maxVisible: number,
+  scope: 'all' | 'my'
 ): Badge[] {
   const list = labels.slice(0, maxVisible).map((item) => ({
     label: item.label,
-    count: item.node_count
+    count: scope === 'my' ? item.my_count : item.all_count
   }));
   return list;
 }

@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
 import { parseReviewFilters } from '@/lib/reviewFilters';
 import { NODE_REVIEW_LABEL_LIMIT } from '@/lib/constants';
+import { getTaxonomyNodeBadges } from '@/lib/nodeBadges';
 
 export const runtime = 'nodejs';
 
@@ -11,11 +12,6 @@ type NodeReviewStatRow = {
   node_name: string | null;
   review_count: number;
   bayes_score: number;
-};
-
-type NodeReviewLabelRow = {
-  label: string;
-  node_count: number;
 };
 
 export async function GET(request: Request) {
@@ -76,22 +72,9 @@ export async function GET(request: Request) {
     )
     .all(...params) as NodeReviewStatRow[];
 
-  const labelRows = db
-    .prepare(
-      `
-      SELECT t.label,
-             COUNT(DISTINCT nrs.node_id) AS node_count
-      FROM node_review_stats nrs
-      JOIN node_taxonomy nt ON nt.node_id = nrs.node_id
-      JOIN taxonomy t ON t.id = nt.taxonomy_id
-      ${scopeClause ? 'WHERE 1=1' : ''}
-      ${scopeClause}
-      GROUP BY t.label
-      ORDER BY node_count DESC, t.label ASC
-      LIMIT ${NODE_REVIEW_LABEL_LIMIT}
-    `
-    )
-    .all(...(scope === 'my' && sessionUser ? [sessionUser.id] : [])) as NodeReviewLabelRow[];
+  const labelRows = getTaxonomyNodeBadges(db, {
+    limit: NODE_REVIEW_LABEL_LIMIT
+  });
 
   return NextResponse.json({ stats: rows, labels: labelRows });
 }

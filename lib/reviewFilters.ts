@@ -3,6 +3,7 @@ export type ReviewScope = 'my' | 'all';
 export type ReviewFilterParams = {
   scope: ReviewScope;
   label: string | null;
+  nodeId: number | null;
   nodeName: string;
   nodeNameTerms: string[];
 };
@@ -35,6 +36,13 @@ export function normalizeNodeName(nodeNameParam: string | null) {
   return nodeNameParam.trim();
 }
 
+export function normalizeNodeId(nodeIdParam: string | null) {
+  if (!nodeIdParam) return null;
+  const value = Number(nodeIdParam);
+  if (!Number.isFinite(value)) return null;
+  return value;
+}
+
 export function buildNodeNameTerms(nodeName: string) {
   if (!nodeName) return [];
   return nodeName
@@ -50,7 +58,8 @@ export function parseReviewFilters(
 ): ReviewFilterParams {
   const scope = normalizeScope(searchParams.get('scope'), options.isLoggedIn, options.isAdmin);
   const label = normalizeLabel(searchParams.get('label'));
+  const nodeId = normalizeNodeId(searchParams.get('node') ?? searchParams.get('node_id'));
   const nodeName = normalizeNodeName(searchParams.get('node_name'));
   const nodeNameTerms = buildNodeNameTerms(nodeName);
-  return { scope, label, nodeName, nodeNameTerms };
+  return { scope, label, nodeId, nodeName, nodeNameTerms };
 }

@@ -20,6 +20,11 @@ export default function LoginPage() {
     try {
       const url = new URL(redirectTo, window.location.origin);
       url.searchParams.set('scope', scope);
+      if (scope === 'my') {
+        url.searchParams.delete('node');
+        url.searchParams.delete('node_id');
+        url.searchParams.delete('node_name');
+      }
       return `${url.pathname}${url.search}${url.hash}`;
     } catch {
       return `/entity-reviews?scope=${scope}`;
