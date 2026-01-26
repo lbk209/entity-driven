@@ -137,7 +137,7 @@ export function getDb() {
 
   const dataDir = path.join(process.cwd(), 'data');
   fs.mkdirSync(dataDir, { recursive: true });
-  const dbPath = path.join(dataDir, 'app.sqlite');
+  const dbPath = path.join(dataDir, process.env.DB_PATH ?? 'app.sqlite');
   db = new Database(dbPath);
   db.pragma('foreign_keys = ON');
   db.exec(schemaSql);

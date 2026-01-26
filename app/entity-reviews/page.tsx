@@ -18,6 +18,7 @@ type Review = {
   updated_at: string | null;
   preview: string;
   entity_name: string;
+  node_id: number | null;
   node_name: string | null;
   sentiment?: 'positive' | 'negative';
 };
@@ -240,7 +241,19 @@ export default function EntityReviewsPage() {
                 <li key={review.id}>
                   <div className="review-line">
                     <span className="review-preview">
-                      <span className="badge badge--filter">{nodeLabel}</span>
+                      <span
+                        className="badge badge--filter"
+                        onClick={() => {
+                          if (review.node_id === null) return;
+                          updateQuery({
+                            node: String(review.node_id),
+                            node_name: null,
+                            node_id: null
+                          });
+                        }}
+                      >
+                        {nodeLabel}
+                      </span>
                       {review.sentiment && (
                         <span
                           className={`review-sentiment review-sentiment--${review.sentiment}`}

@@ -25,6 +25,7 @@ export async function GET(request: Request) {
     created_at: string;
     updated_at: string | null;
     entity_name: string;
+    node_id: number | null;
     node_name: string | null;
   }> = [];
 
@@ -63,6 +64,7 @@ export async function GET(request: Request) {
       `
       SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
              r.entity_name,
+             r.node_id,
              n.name AS node_name
       FROM review r
       JOIN user u ON u.id = r.user_id
@@ -80,6 +82,7 @@ export async function GET(request: Request) {
     updated_at: string | null;
     preview: string;
     entity_name: string;
+    node_id: number | null;
     node_name: string | null;
     sentiment?: 'positive' | 'negative';
   }> = rows.map((row) => ({
@@ -89,6 +92,7 @@ export async function GET(request: Request) {
     updated_at: row.updated_at,
     preview: previewText(row.content),
     entity_name: row.entity_name,
+    node_id: row.node_id,
     node_name: row.node_name
   }));
 
