@@ -9,7 +9,7 @@ import NodeNameSearch from '../components/NodeNameSearch';
 import { parseReviewFilters } from '@/lib/reviewFilters';
 import { useSession } from '../components/useSession';
 import ScopeToggle from '../components/ScopeToggle';
-import { ENTITY_REVIEW_LABEL_LIMIT } from '@/lib/constants';
+import { ENTITY_REVIEW_LABEL_LIMIT, ENTITY_REVIEWS_MAX_ITEMS } from '@/lib/constants';
 
 type Review = {
   id: number;
@@ -37,9 +37,14 @@ export default function EntityReviewsPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [labels, setLabels] = useState<ReviewLabelRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [hasMore, setHasMore] = useState(true);
+  const [cursor, setCursor] = useState<{ created_at: string; review_id: number } | null>(null);
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const isFetchingRef = useRef(false);
 
   const { scope: effectiveScope, label: effectiveLabel, nodeId, nodeName: nodeNameParam } =
     useMemo(
@@ -77,29 +82,79 @@ export default function EntityReviewsPage() {
 
   useEffect(() => {
     let isActive = true;
-    setIsLoading(true);
-    setError('');
-    fetch(`/api/reviews${queryString}`)
-      .then((res) => res.json())
-      .then((data) => {
+    const loadInitial = async () => {
+      setIsLoading(true);
+      setError('');
+      setCursor(null);
+      setHasMore(true);
+      try {
+        const res = await fetch(`/api/reviews${queryString}`);
+        const data = await res.json();
         if (!isActive) return;
         setReviews(data.reviews || []);
         setLabels(data.labels || []);
-      })
-      .catch(() => {
+        setCursor(data.nextCursor ?? null);
+        setHasMore(Boolean(data.nextCursor));
+      } catch {
         if (!isActive) return;
         setReviews([]);
         setLabels([]);
         setError('Failed to load reviews.');
-      })
-      .finally(() => {
+      } finally {
         if (!isActive) return;
         setIsLoading(false);
-      });
+      }
+    };
+    loadInitial();
     return () => {
       isActive = false;
     };
   }, [queryString, user]);
+
+  useEffect(() => {
+    if (!hasMore) return;
+    if (reviews.length >= ENTITY_REVIEWS_MAX_ITEMS) {
+      setHasMore(false);
+      return;
+    }
+    const node = loadMoreRef.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting) return;
+      if (isFetchingRef.current || isLoading || isLoadingMore) return;
+      if (!hasMore || !cursor) return;
+      isFetchingRef.current = true;
+      setIsLoadingMore(true);
+      const params = new URLSearchParams(queryString.replace(/^\?/, ''));
+      params.set('cursor_created_at', cursor.created_at);
+      params.set('cursor_review_id', String(cursor.review_id));
+      fetch(`/api/reviews?${params.toString()}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setReviews((prev) => {
+            const next = [...prev, ...(data.reviews ?? [])];
+            return next.slice(0, ENTITY_REVIEWS_MAX_ITEMS);
+          });
+          if (data.nextCursor) {
+            setCursor(data.nextCursor);
+            setHasMore(true);
+          } else {
+            setHasMore(false);
+          }
+        })
+        .catch(() => {
+          setHasMore(false);
+        })
+        .finally(() => {
+          isFetchingRef.current = false;
+          setIsLoadingMore(false);
+        });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [cursor, hasMore, isLoading, isLoadingMore, queryString, reviews.length]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -276,6 +331,8 @@ export default function EntityReviewsPage() {
             })}
           </ul>
           {!isLoading && !error && reviews.length === 0 && <small>No reviews found.</small>}
+          <div ref={loadMoreRef} />
+          {isLoadingMore && <small>Loading more...</small>}
         </div>
       </section>
     </>

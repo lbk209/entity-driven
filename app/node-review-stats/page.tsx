@@ -9,7 +9,10 @@ import NodeNameSearch from '../components/NodeNameSearch';
 import { useSession } from '../components/useSession';
 import { parseReviewFilters } from '@/lib/reviewFilters';
 import ScopeToggle from '../components/ScopeToggle';
-import { NODE_REVIEW_LABEL_LIMIT } from '@/lib/constants';
+import {
+  NODE_REVIEW_LABEL_LIMIT,
+  NODE_REVIEW_STATS_MAX_ITEMS
+} from '@/lib/constants';
 
 type SortDirection = 'asc' | 'desc';
 type SortState<T extends string> = { key: T; direction: SortDirection };
@@ -51,9 +54,19 @@ export default function NodeReviewStatsPage() {
   const [stats, setStats] = useState<NodeReviewStatRow[]>([]);
   const [labels, setLabels] = useState<NodeReviewLabelRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [cursor, setCursor] = useState<{
+    score: number;
+    count: number;
+    node_id: number;
+    name: string;
+  } | null>(null);
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const isFetchingRef = useRef(false);
   const searchParamString = searchParams.toString();
 
   const sortKeyParam = searchParams.get('sort_key');
@@ -88,6 +101,8 @@ export default function NodeReviewStatsPage() {
     async function loadStats() {
       setIsLoading(true);
       setError(null);
+      setHasMore(true);
+      setCursor(null);
       try {
         const url = searchParamString
           ? `/api/node-review-stats?${searchParamString}`
@@ -103,10 +118,13 @@ export default function NodeReviewStatsPage() {
         if (isActive) {
           setStats(data.stats ?? []);
           setLabels(data.labels ?? []);
+          setCursor(data.nextCursor ?? null);
+          setHasMore(Boolean(data.nextCursor));
         }
       } catch (err) {
         if (isActive) {
           setError(err instanceof Error ? err.message : 'Failed to load stats');
+          setHasMore(false);
         }
       } finally {
         if (isActive) {
@@ -120,6 +138,55 @@ export default function NodeReviewStatsPage() {
       isActive = false;
     };
   }, [searchParamString, user]);
+
+  useEffect(() => {
+    if (!hasMore) return;
+    if (stats.length >= NODE_REVIEW_STATS_MAX_ITEMS) {
+      setHasMore(false);
+      return;
+    }
+    const node = loadMoreRef.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting) return;
+      if (isFetchingRef.current || isLoading || isLoadingMore) return;
+      if (!hasMore || !cursor) return;
+      isFetchingRef.current = true;
+      setIsLoadingMore(true);
+      const params = new URLSearchParams(searchParamString);
+      params.set('cursor_score', String(cursor.score));
+      params.set('cursor_count', String(cursor.count));
+      params.set('cursor_node_id', String(cursor.node_id));
+      if (sort.key === 'name') {
+        params.set('cursor_name', cursor.name);
+      }
+      fetch(`/api/node-review-stats?${params.toString()}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setStats((prev) => {
+            const next = [...prev, ...(data.stats ?? [])];
+            return next.slice(0, NODE_REVIEW_STATS_MAX_ITEMS);
+          });
+          if (data.nextCursor) {
+            setCursor(data.nextCursor);
+            setHasMore(true);
+          } else {
+            setHasMore(false);
+          }
+        })
+        .catch(() => {
+          setHasMore(false);
+        })
+        .finally(() => {
+          isFetchingRef.current = false;
+          setIsLoadingMore(false);
+        });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [cursor, hasMore, isLoading, isLoadingMore, searchParamString, sort.key, stats.length]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -306,6 +373,8 @@ export default function NodeReviewStatsPage() {
                   <div className="admin-cell-wrap">{formatScore(row.bayes_score)}</div>
                 </div>
               ))}
+              <div ref={loadMoreRef} />
+              {isLoadingMore && <div className="admin-row">Loading more...</div>}
             </>
           )}
         </div>

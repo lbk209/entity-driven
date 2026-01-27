@@ -10,6 +10,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 - Filter reviews by linked node name/id, taxonomy label, and user id
 - Review previews use full content; entity badges are inline and mobile clamps to two lines
 - Node review stats page at `/node-review-stats` with server-side node-name search, taxonomy label filters, and sortable columns
+- Entity Reviews and Node Review Stats use cursor-based incremental loading with fixed page sizes and max caps
 
 ## Stack
 
@@ -43,6 +44,11 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 - Admin UI: `app/admin/page.tsx`
 - Styles: `app/globals.css`
 
+## API (Cursor Pagination)
+
+- Entity Reviews: `GET /api/reviews` supports `cursor_created_at` + `cursor_review_id`; response includes `nextCursor` with `{ created_at, review_id }`.
+- Node Review Stats: `GET /api/node-review-stats` supports `cursor_score`, `cursor_count`, `cursor_node_id`, plus `cursor_name` when sorting by name; response includes `nextCursor` with `{ score, count, node_id, name }`.
+
 ## Local Run
 
 ```bash
@@ -66,6 +72,8 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Login redirect enforces role-aware default scope on success: users land with `scope=my`, admins with `scope=all`; when scope becomes `my`, node-related params (`node`, `node_id`, `node_name`) are stripped.
 - Logout forces `scope=all` in the URL.
 - Review updates record `updated_at` and list sorting uses updated time.
+- Entity Reviews list is cursor-paginated and sorted by `created_at DESC, id DESC` with `(created_at, review_id)` cursor.
+- Node Review Stats list is cursor-paginated with `(score, count, node_id)` cursor; sorting is frozen during scrolling and resets on sort/filter changes.
 - Review list shows real user IDs, entity badges, and uses a snap-scrolling list without a section header.
 - Entity picker uses autocomplete suggestions and stores the exact user-entered name.
 - Review details show the entity badge before content with an edit action.
@@ -86,6 +94,7 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Edge relations include allowed parent/child node type lists stored as JSON strings, plus description, UI priority, and max suggestions; edge inserts/updates validate parent/child node types against these lists.
 - Admin Reference tab uses radio buttons to switch between edge relations, node types, and taxonomy views; relation list wraps parent/child types and vertically centers row text; relation edit row supports multi-select type pickers and shows the relation description in a compact textarea below the form row.
 - Entity Reviews filter: node search uses a custom suggestion dropdown with max-height styling; suggestions show on focus and filter as you type; label badges and user-id filtering are supported.
+- Pagination limits live in `lib/constants.ts` as `ENTITY_REVIEWS_PAGE_SIZE`, `ENTITY_REVIEWS_MAX_ITEMS`, `NODE_REVIEW_STATS_PAGE_SIZE`, and `NODE_REVIEW_STATS_MAX_ITEMS`.
 
 ## Schema
 

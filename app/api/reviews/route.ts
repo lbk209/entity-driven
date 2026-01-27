@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb, previewText } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
 import { parseReviewFilters } from '@/lib/reviewFilters';
-import { ENTITY_REVIEW_LABEL_LIMIT } from '@/lib/constants';
+import { ENTITY_REVIEW_LABEL_LIMIT, ENTITY_REVIEWS_PAGE_SIZE } from '@/lib/constants';
 import { getTaxonomyReviewBadges } from '@/lib/reviewBadges';
 
 export const runtime = 'nodejs';
@@ -10,10 +10,13 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const sessionUser = getSessionUser();
   const { searchParams } = new URL(request.url);
-  const { scope, label, nodeId, nodeNameTerms } = parseReviewFilters(searchParams, {
+  const { scope, label, nodeId, nodeNameTerms, userId } = parseReviewFilters(searchParams, {
     isLoggedIn: Boolean(sessionUser),
     isAdmin: sessionUser?.role === 'admin'
   });
+  const cursorCreatedAt = searchParams.get('cursor_created_at');
+  const cursorReviewIdRaw = searchParams.get('cursor_review_id');
+  const cursorReviewId = cursorReviewIdRaw ? Number(cursorReviewIdRaw) : NaN;
 
   const db = getDb();
   const confidenceFloorRaw = process.env.REVIEW_SENTIMENT_CONFIDENCE_MIN ?? '0.15';
@@ -57,8 +60,17 @@ export async function GET(request: Request) {
     whereClauses.push(nodeNameTerms.map(() => 'LOWER(n.name) LIKE ?').join(' AND '));
     params.push(...nodeNameTerms.map((term) => `%${term}%`));
   }
+  if (userId) {
+    whereClauses.push('u.user_id = ?');
+    params.push(userId);
+  }
+  if (cursorCreatedAt && Number.isFinite(cursorReviewId)) {
+    whereClauses.push('(r.created_at < ? OR (r.created_at = ? AND r.id < ?))');
+    params.push(cursorCreatedAt, cursorCreatedAt, cursorReviewId);
+  }
 
   const whereClause = whereClauses.length > 0 ? whereClauses.join(' AND ') : '1=1';
+  const pageSize = ENTITY_REVIEWS_PAGE_SIZE;
   rows = db
     .prepare(
       `
@@ -70,11 +82,14 @@ export async function GET(request: Request) {
       JOIN user u ON u.id = r.user_id
       LEFT JOIN nodes n ON n.id = r.node_id
       WHERE ${whereClause}
-      ORDER BY COALESCE(r.updated_at, r.created_at) DESC
+      ORDER BY r.created_at DESC, r.id DESC
+      LIMIT ?
     `
     )
-    .all(...params);
+    .all(...params, pageSize + 1);
 
+  const hasMore = rows.length > pageSize;
+  const pageRows = rows.slice(0, pageSize);
   const reviews: Array<{
     id: number;
     user_id: string;
@@ -85,7 +100,7 @@ export async function GET(request: Request) {
     node_id: number | null;
     node_name: string | null;
     sentiment?: 'positive' | 'negative';
-  }> = rows.map((row) => ({
+  }> = pageRows.map((row) => ({
     id: row.id,
     user_id: row.user_id,
     created_at: row.created_at,
@@ -148,5 +163,10 @@ export async function GET(request: Request) {
     limit: ENTITY_REVIEW_LABEL_LIMIT
   });
 
-  return NextResponse.json({ reviews, labels });
+  const lastReview = reviews.at(-1);
+  const nextCursor = hasMore && lastReview
+    ? { created_at: lastReview.created_at, review_id: lastReview.id }
+    : null;
+
+  return NextResponse.json({ reviews, labels, nextCursor });
 }

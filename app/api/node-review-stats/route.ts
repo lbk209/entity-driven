@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
 import { parseReviewFilters } from '@/lib/reviewFilters';
-import { NODE_REVIEW_LABEL_LIMIT } from '@/lib/constants';
+import {
+  NODE_REVIEW_LABEL_LIMIT,
+  NODE_REVIEW_STATS_PAGE_SIZE
+} from '@/lib/constants';
 import { getTaxonomyNodeBadges } from '@/lib/nodeBadges';
 
 export const runtime = 'nodejs';
@@ -21,9 +24,20 @@ export async function GET(request: Request) {
     isLoggedIn: Boolean(sessionUser),
     isAdmin: sessionUser?.role === 'admin'
   });
-  const sortKey = searchParams.get('sort_key') || '';
+  const sortKeyRaw = searchParams.get('sort_key') || '';
+  const sortKey =
+    sortKeyRaw === 'name' || sortKeyRaw === 'bayes_score' || sortKeyRaw === 'review_count'
+      ? sortKeyRaw
+      : 'review_count';
   const sortDirRaw = searchParams.get('sort_dir') || '';
   const sortDir = sortDirRaw.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  const cursorScoreRaw = searchParams.get('cursor_score');
+  const cursorCountRaw = searchParams.get('cursor_count');
+  const cursorNodeIdRaw = searchParams.get('cursor_node_id');
+  const cursorName = searchParams.get('cursor_name');
+  const cursorScore = cursorScoreRaw !== null ? Number(cursorScoreRaw) : NaN;
+  const cursorCount = cursorCountRaw !== null ? Number(cursorCountRaw) : NaN;
+  const cursorNodeId = cursorNodeIdRaw !== null ? Number(cursorNodeIdRaw) : NaN;
 
   const db = getDb();
   const labelClause = label ? 'AND t.label = ?' : '';
@@ -41,15 +55,124 @@ export async function GET(request: Request) {
   ];
   const orderBy = (() => {
     if (sortKey === 'name') {
-      return `n.name ${sortDir}, nrs.review_count DESC`;
+      return `COALESCE(n.name, '') ${sortDir}, nrs.review_count DESC, nrs.bayes_score DESC, nrs.node_id ASC`;
     }
     if (sortKey === 'bayes_score') {
-      return `nrs.bayes_score ${sortDir}, nrs.review_count DESC`;
+      return `nrs.bayes_score ${sortDir}, nrs.review_count DESC, nrs.node_id ASC`;
     }
     if (sortKey === 'review_count') {
-      return `nrs.review_count ${sortDir}, nrs.bayes_score DESC`;
+      return `nrs.review_count ${sortDir}, nrs.bayes_score DESC, nrs.node_id ASC`;
     }
-    return 'nrs.review_count DESC, nrs.bayes_score DESC';
+    return 'nrs.review_count DESC, nrs.bayes_score DESC, nrs.node_id ASC';
+  })();
+  const cursorClause = (() => {
+    if (!Number.isFinite(cursorScore) || !Number.isFinite(cursorCount) || !Number.isFinite(cursorNodeId)) {
+      return { clause: '', params: [] as Array<string | number> };
+    }
+    if (sortKey === 'name') {
+      if (cursorName === null) {
+        return { clause: '', params: [] as Array<string | number> };
+      }
+      if (sortDir === 'ASC') {
+        return {
+          clause:
+            `AND (` +
+            `COALESCE(n.name, '') > ? ` +
+            `OR (COALESCE(n.name, '') = ? AND (` +
+            `nrs.review_count < ? ` +
+            `OR (nrs.review_count = ? AND (` +
+            `nrs.bayes_score < ? ` +
+            `OR (nrs.bayes_score = ? AND nrs.node_id > ?)` +
+            `))` +
+            `))` +
+            `)`,
+          params: [
+            cursorName,
+            cursorName,
+            cursorCount,
+            cursorCount,
+            cursorScore,
+            cursorScore,
+            cursorNodeId
+          ]
+        };
+      }
+      return {
+        clause:
+          `AND (` +
+          `COALESCE(n.name, '') < ? ` +
+          `OR (COALESCE(n.name, '') = ? AND (` +
+          `nrs.review_count < ? ` +
+          `OR (nrs.review_count = ? AND (` +
+          `nrs.bayes_score < ? ` +
+          `OR (nrs.bayes_score = ? AND nrs.node_id > ?)` +
+          `))` +
+          `))` +
+          `)`,
+        params: [
+          cursorName,
+          cursorName,
+          cursorCount,
+          cursorCount,
+          cursorScore,
+          cursorScore,
+          cursorNodeId
+        ]
+      };
+    }
+    if (sortKey === 'bayes_score') {
+      if (sortDir === 'ASC') {
+        return {
+          clause:
+            `AND (` +
+            `nrs.bayes_score > ? ` +
+            `OR (nrs.bayes_score = ? AND (` +
+            `nrs.review_count < ? ` +
+            `OR (nrs.review_count = ? AND nrs.node_id > ?)` +
+            `))` +
+            `)`,
+          params: [cursorScore, cursorScore, cursorCount, cursorCount, cursorNodeId]
+        };
+      }
+      return {
+        clause:
+          `AND (` +
+          `nrs.bayes_score < ? ` +
+          `OR (nrs.bayes_score = ? AND (` +
+          `nrs.review_count < ? ` +
+          `OR (nrs.review_count = ? AND nrs.node_id > ?)` +
+          `))` +
+          `)`,
+        params: [cursorScore, cursorScore, cursorCount, cursorCount, cursorNodeId]
+      };
+    }
+    if (sortKey === 'review_count') {
+      if (sortDir === 'ASC') {
+        return {
+          clause:
+            `AND (` +
+            `nrs.review_count > ? ` +
+            `OR (nrs.review_count = ? AND (` +
+            `nrs.bayes_score < ? ` +
+            `OR (nrs.bayes_score = ? AND nrs.node_id > ?)` +
+            `))` +
+            `)`,
+          params: [cursorCount, cursorCount, cursorScore, cursorScore, cursorNodeId]
+        };
+      }
+      return {
+        clause:
+          `AND (` +
+          `nrs.review_count < ? ` +
+          `OR (nrs.review_count = ? AND (` +
+          `nrs.bayes_score < ? ` +
+          `OR (nrs.bayes_score = ? AND nrs.node_id > ?)` +
+          `))` +
+          `)`,
+        params: [cursorCount, cursorCount, cursorScore, cursorScore, cursorNodeId]
+      };
+    }
+    return { clause: '', params: [] as Array<string | number> };
   })();
 
   const rows = db
@@ -67,14 +190,29 @@ export async function GET(request: Request) {
       ${labelClause}
       ${nameClause}
       ${scopeClause}
+      ${cursorClause.clause}
       ORDER BY ${orderBy}
+      LIMIT ?
     `
     )
-    .all(...params) as NodeReviewStatRow[];
+    .all(...params, ...cursorClause.params, NODE_REVIEW_STATS_PAGE_SIZE + 1) as NodeReviewStatRow[];
+
+  const hasMore = rows.length > NODE_REVIEW_STATS_PAGE_SIZE;
+  const pageRows = rows.slice(0, NODE_REVIEW_STATS_PAGE_SIZE);
 
   const labelRows = getTaxonomyNodeBadges(db, {
     limit: NODE_REVIEW_LABEL_LIMIT
   });
 
-  return NextResponse.json({ stats: rows, labels: labelRows });
+  const lastRow = pageRows.at(-1);
+  const nextCursor = hasMore && lastRow
+    ? {
+        score: lastRow.bayes_score,
+        count: lastRow.review_count,
+        node_id: lastRow.node_id,
+        name: lastRow.node_name ?? ''
+      }
+    : null;
+
+  return NextResponse.json({ stats: pageRows, labels: labelRows, nextCursor });
 }
