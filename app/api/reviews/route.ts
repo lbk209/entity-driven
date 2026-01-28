@@ -34,9 +34,11 @@ export async function GET(request: Request) {
 
   const whereClauses: string[] = [];
   const params: Array<string | number> = [];
-  if (scope === 'my' && sessionUser) {
-    whereClauses.push('r.user_id = ?');
-    params.push(sessionUser.id);
+  const effectiveUserId =
+    scope === 'my' && sessionUser ? sessionUser.user_id : userId;
+  if (effectiveUserId) {
+    whereClauses.push('u.user_id = ?');
+    params.push(effectiveUserId);
   }
   if (label) {
     whereClauses.push(
@@ -59,10 +61,6 @@ export async function GET(request: Request) {
   if (nodeNameTerms.length > 0) {
     whereClauses.push(nodeNameTerms.map(() => 'LOWER(n.name) LIKE ?').join(' AND '));
     params.push(...nodeNameTerms.map((term) => `%${term}%`));
-  }
-  if (userId) {
-    whereClauses.push('u.user_id = ?');
-    params.push(userId);
   }
   if (cursorCreatedAt && Number.isFinite(cursorReviewId)) {
     whereClauses.push('(r.created_at < ? OR (r.created_at = ? AND r.id < ?))');

@@ -6,12 +6,16 @@ type NodeNameSearchProps = {
   value: string;
   onCommit: (value: string) => void;
   onClear: () => void;
+  forceClear?: boolean;
+  placeholder?: string;
 };
 
 export default function NodeNameSearch({
   value,
   onCommit,
-  onClear
+  onClear,
+  forceClear = false,
+  placeholder = 'Type node name'
 }: NodeNameSearchProps) {
   const [draft, setDraft] = useState(value);
   const [isComposing, setIsComposing] = useState(false);
@@ -22,7 +26,9 @@ export default function NodeNameSearch({
 
   const hasCommittedValue = value.trim().length > 0;
   const draftTrimmed = draft.trim();
-  const showClear = hasCommittedValue && draftTrimmed === value.trim();
+  const showClear =
+    (hasCommittedValue && draftTrimmed === value.trim()) ||
+    (forceClear && !hasCommittedValue && !draftTrimmed);
 
   function commitDraft() {
     if (isComposing) return;
@@ -35,7 +41,7 @@ export default function NodeNameSearch({
         <input
           id="node-search"
           aria-label="Filter by node name"
-          placeholder="Type node name"
+          placeholder={placeholder}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {

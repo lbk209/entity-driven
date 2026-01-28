@@ -7,7 +7,7 @@ This file captures context so we can continue quickly next time.
 Minimal Next.js App Router app with SQLite for local testing. Features:
 - Create users
 - Submit and edit reviews linked to entities (inline creation supported)
-- Filter reviews by linked node name/id, taxonomy label, and user id
+- Filter reviews by linked node name/id, taxonomy label, and user id (via scope or specific user filter)
 - Review previews use full content; entity badges are inline and mobile clamps to two lines
 - Node review stats page at `/node-review-stats` with server-side node-name search, taxonomy label filters, and sortable columns
 - Entity Reviews and Node Review Stats use cursor-based incremental loading with fixed page sizes and max caps
@@ -79,8 +79,9 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Review details show the entity badge before content with an edit action.
 - Reviews store `entity_name` directly with an optional `node_id` anchor.
 - Search/filter resolves via `nodes.name`/`review.node_id`, plus taxonomy labels and user IDs.
-- Entity Reviews API accepts `node` (id), `node_name` (name), `label`, and `user`.
-- Entity Reviews node filter UX: `node=ID` deep links resolve to node name and populate the node name search box; the clear button removes `node`, `node_id`, and `node_name`.
+- Entity Reviews API accepts `node` (id), `node_name` (name), `label`, and `user_id`.
+- Entity Reviews node filter UX: `node=ID` deep links resolve to node name and populate the node name search box; the clear button removes `node`, `node_id`, `node_name`, and any specific user filter.
+- Entity Reviews user filter UX: clicking a user name filters reviews to that user while scope remains `all`; the search clear button clears the user filter and node-name search, and node search placeholder changes to “Click Clear first” while active.
 - Node Review Stats row click navigates to Entity Reviews with `scope` and `node` preserved in the URL.
 - Badge semantics are intentionally split:
   - Entity Reviews badges are review-driven (counts = review totals per taxonomy).

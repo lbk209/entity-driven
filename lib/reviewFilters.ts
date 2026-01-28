@@ -6,6 +6,7 @@ export type ReviewFilterParams = {
   nodeId: number | null;
   nodeName: string;
   nodeNameTerms: string[];
+  userId: string | null;
 };
 
 export function normalizeScope(
@@ -52,6 +53,12 @@ export function buildNodeNameTerms(nodeName: string) {
     .filter(Boolean);
 }
 
+export function normalizeUserId(userIdParam: string | null) {
+  if (!userIdParam) return null;
+  const trimmed = userIdParam.trim();
+  return trimmed ? trimmed : null;
+}
+
 export function parseReviewFilters(
   searchParams: { get: (key: string) => string | null },
   options: { isLoggedIn: boolean; isAdmin: boolean }
@@ -61,5 +68,6 @@ export function parseReviewFilters(
   const nodeId = normalizeNodeId(searchParams.get('node') ?? searchParams.get('node_id'));
   const nodeName = normalizeNodeName(searchParams.get('node_name'));
   const nodeNameTerms = buildNodeNameTerms(nodeName);
-  return { scope, label, nodeId, nodeName, nodeNameTerms };
+  const userId = normalizeUserId(searchParams.get('user_id'));
+  return { scope, label, nodeId, nodeName, nodeNameTerms, userId };
 }

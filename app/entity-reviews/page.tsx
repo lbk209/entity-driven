@@ -46,7 +46,13 @@ export default function EntityReviewsPage() {
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const isFetchingRef = useRef(false);
 
-  const { scope: effectiveScope, label: effectiveLabel, nodeId, nodeName: nodeNameParam } =
+  const {
+    scope: effectiveScope,
+    label: effectiveLabel,
+    nodeId,
+    nodeName: nodeNameParam,
+    userId: userIdParam
+  } =
     useMemo(
     () =>
       parseReviewFilters(searchParams, {
@@ -68,6 +74,8 @@ export default function EntityReviewsPage() {
     if (nodeId !== null) return resolvedNodeName;
     return '';
   }, [nodeId, nodeNameParam, resolvedNodeName]);
+
+  const hasSpecificUserFilter = Boolean(userIdParam && effectiveScope === 'all');
 
   const nodeReviewStatsHref = useMemo(() => {
     const params = new URLSearchParams();
@@ -171,16 +179,17 @@ export default function EntityReviewsPage() {
   }, []);
 
   function updateQuery(next: {
-    scope?: string;
+    scope?: string | null;
     label?: string | null;
     node_name?: string | null;
     node?: string | null;
     node_id?: string | null;
+    user_id?: string | null;
   }) {
     const params = new URLSearchParams(searchParams.toString());
     if (next.scope) {
       params.set('scope', next.scope);
-    } else {
+    } else if (next.scope === null) {
       params.delete('scope');
     }
     if (!next.label || next.label.toLowerCase() === 'all') {
@@ -202,6 +211,11 @@ export default function EntityReviewsPage() {
       params.set('node_id', next.node_id);
     } else if (next.node_id !== undefined) {
       params.delete('node_id');
+    }
+    if (next.user_id) {
+      params.set('user_id', next.user_id);
+    } else if (next.user_id !== undefined) {
+      params.delete('user_id');
     }
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
@@ -255,7 +269,13 @@ export default function EntityReviewsPage() {
           <div className="filter-row filter-row--inline">
             <ScopeToggle
               value={effectiveScope}
-              onChange={(scope) => updateQuery({ scope, label: effectiveLabel })}
+              onChange={(scope) =>
+                updateQuery({
+                  scope,
+                  label: effectiveLabel,
+                  user_id: scope === 'my' ? user?.user_id ?? null : null
+                })
+              }
             />
             <LabelBadgeRow
               badges={allLabelBadges}
@@ -273,7 +293,15 @@ export default function EntityReviewsPage() {
                   node_id: null
                 })
               }
-              onClear={() => updateQuery({ node_name: null, node: null, node_id: null })}
+              onClear={() =>
+                updateQuery({ node_name: null, node: null, node_id: null, user_id: null })
+              }
+              forceClear={hasSpecificUserFilter}
+              placeholder={
+                hasSpecificUserFilter
+                  ? 'Click Clear first'
+                  : 'Type node name'
+              }
             />
           </div>
         </section>
@@ -323,7 +351,19 @@ export default function EntityReviewsPage() {
                     </span>
                   </div>
                   <small className="review-meta">
-                    <span className="review-user">{review.user_id}</span> ·{' '}
+                    <button
+                      type="button"
+                      className="review-user"
+                      onClick={() =>
+                        updateQuery({
+                          scope: 'all',
+                          user_id: review.user_id
+                        })
+                      }
+                    >
+                      {review.user_id}
+                    </button>{' '}
+                    ·{' '}
                     {new Date(review.updated_at ?? review.created_at).toLocaleString()}
                   </small>
                 </li>
