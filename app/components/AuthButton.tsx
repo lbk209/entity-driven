@@ -25,6 +25,9 @@ export default function AuthButton() {
       const nextQuery = params.toString();
       const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
       router.replace(nextUrl);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('session-change'));
+      }
       router.refresh();
     } finally {
       setIsWorking(false);

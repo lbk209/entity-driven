@@ -48,11 +48,31 @@ function getReviewForEdit(id: number): ReviewEditData | null {
   };
 }
 
-export default function EditReviewPage({ params }: { params: { id: string } }) {
+export default function EditReviewPage({
+  params,
+  searchParams
+}: {
+  params: { id: string };
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const reviewId = Number(params.id);
   if (!Number.isFinite(reviewId)) {
     notFound();
   }
+  const detailParams = new URLSearchParams();
+  if (searchParams) {
+    Object.entries(searchParams).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach((entry) => detailParams.append(key, entry));
+        return;
+      }
+      if (value !== undefined) {
+        detailParams.set(key, value);
+      }
+    });
+  }
+  const detailQueryString = detailParams.toString();
+  const detailSuffix = detailQueryString ? `?${detailQueryString}` : '';
 
   const review = getReviewForEdit(reviewId);
   if (!review) {
@@ -60,10 +80,10 @@ export default function EditReviewPage({ params }: { params: { id: string } }) {
   }
   const sessionUser = getSessionUser();
   if (!sessionUser) {
-    redirect(`/login?redirect=${encodeURIComponent(`/reviews/${reviewId}/edit`)}`);
+    redirect(`/login?redirect=${encodeURIComponent(`/reviews/${reviewId}/edit${detailSuffix}`)}`);
   }
   if (!canEditReview(sessionUser, review.user_id)) {
-    redirect(`/reviews/${reviewId}`);
+    redirect(`/reviews/${reviewId}${detailSuffix}`);
   }
 
   return (
@@ -73,7 +93,7 @@ export default function EditReviewPage({ params }: { params: { id: string } }) {
           <h1>Edit review</h1>
           <small>Update the content or entities, then save.</small>
         </div>
-        <Link href={`/reviews/${review.id}`} className="button-link button-link--ghost">
+        <Link href={`/reviews/${review.id}${detailSuffix}`} className="button-link button-link--ghost">
           Back to review
         </Link>
       </div>
@@ -86,6 +106,7 @@ export default function EditReviewPage({ params }: { params: { id: string } }) {
           entity_name: review.entity_name,
           node_id: review.node_id
         }}
+        returnQuery={detailSuffix}
       />
     </>
   );

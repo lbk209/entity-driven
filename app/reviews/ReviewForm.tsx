@@ -19,9 +19,15 @@ type ReviewFormProps = {
   mode: 'create' | 'edit';
   reviewId?: number;
   initialData?: ReviewFormData;
+  returnQuery?: string;
 };
 
-export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormProps) {
+export default function ReviewForm({
+  mode,
+  reviewId,
+  initialData,
+  returnQuery = ''
+}: ReviewFormProps) {
   const router = useRouter();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [reviewContent, setReviewContent] = useState(initialData?.content ?? '');
@@ -58,7 +64,7 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
       method: 'DELETE'
     });
     if (res.ok) {
-      router.push('/entity-reviews');
+      router.push(returnQuery ? `/entity-reviews${returnQuery}` : '/entity-reviews');
       return;
     }
     const data = await res.json().catch(() => ({}));
@@ -92,7 +98,7 @@ export default function ReviewForm({ mode, reviewId, initialData }: ReviewFormPr
       const data = await res.json().catch(() => ({}));
       const targetId = isEdit ? reviewId : data?.id;
       if (targetId) {
-        router.push(`/reviews/${targetId}`);
+        router.push(`/reviews/${targetId}${returnQuery}`);
         router.refresh();
         return;
       }

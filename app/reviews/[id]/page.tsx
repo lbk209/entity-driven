@@ -50,11 +50,32 @@ function getReview(id: number): ReviewDetail | null {
   };
 }
 
-export default function ReviewDetailPage({ params }: { params: { id: string } }) {
+export default function ReviewDetailPage({
+  params,
+  searchParams
+}: {
+  params: { id: string };
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const reviewId = Number(params.id);
   if (!Number.isFinite(reviewId)) {
     notFound();
   }
+  const detailParams = new URLSearchParams();
+  if (searchParams) {
+    Object.entries(searchParams).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach((entry) => detailParams.append(key, entry));
+        return;
+      }
+      if (value !== undefined) {
+        detailParams.set(key, value);
+      }
+    });
+  }
+  const detailQueryString = detailParams.toString();
+  const detailSuffix = detailQueryString ? `?${detailQueryString}` : '';
+  const listHref = detailSuffix ? `/entity-reviews${detailSuffix}` : '/entity-reviews';
 
   const review = getReview(reviewId);
   if (!review) {
@@ -75,11 +96,11 @@ export default function ReviewDetailPage({ params }: { params: { id: string } })
         </div>
         <div className="button-row">
           {canEdit && (
-            <Link href={`/reviews/${review.id}/edit`} className="button-link">
+            <Link href={`/reviews/${review.id}/edit${detailSuffix}`} className="button-link">
               Edit
             </Link>
           )}
-          <Link href="/entity-reviews" className="button-link button-link--ghost">
+          <Link href={listHref} className="button-link button-link--ghost">
             Back
           </Link>
         </div>

@@ -45,29 +45,24 @@ export default function EntityReviewsPage() {
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const isFetchingRef = useRef(false);
+  const navigationRef = useRef(false);
 
-  const {
-    scope: effectiveScope,
-    label: effectiveLabel,
-    nodeId,
-    nodeName: nodeNameParam,
-    userId: userIdParam
-  } =
-    useMemo(
-    () =>
-      parseReviewFilters(searchParams, {
-        isLoggedIn: Boolean(user),
-        isAdmin: user?.role === 'admin'
-      }),
-    [searchParams, user]
+  const { scope: scopeParam, label: effectiveLabel, nodeId, nodeName: nodeNameParam } = useMemo(
+    () => parseReviewFilters(searchParams),
+    [searchParams]
   );
+  const effectiveScope = scopeParam ?? 'all';
 
   const [resolvedNodeName, setResolvedNodeName] = useState('');
+  const [specificUserId, setSpecificUserId] = useState<string | null>(null);
 
+  const searchParamString = searchParams.toString();
+  const detailQueryString = useMemo(() => {
+    return searchParamString ? `?${searchParamString}` : '';
+  }, [searchParamString]);
   const queryString = useMemo(() => {
-    const query = searchParams.toString();
-    return query ? `?${query}` : '';
-  }, [searchParams]);
+    return searchParamString ? `?${searchParamString}` : '';
+  }, [searchParamString]);
 
   const nodeSearchValue = useMemo(() => {
     if (nodeNameParam) return nodeNameParam;
@@ -75,17 +70,27 @@ export default function EntityReviewsPage() {
     return '';
   }, [nodeId, nodeNameParam, resolvedNodeName]);
 
-  const hasSpecificUserFilter = Boolean(userIdParam && effectiveScope === 'all');
+  const hasSpecificUserFilter = Boolean(specificUserId);
+
+  const scopeForData = !user && scopeParam === 'my' ? 'all' : effectiveScope;
+
+  useEffect(() => {
+    if (!searchParams.get('user_id')) return;
+    const params = new URLSearchParams(searchParamString);
+    params.delete('user_id');
+    const query = params.toString();
+    navigationRef.current = true;
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }, [pathname, router, searchParamString, searchParams]);
 
   const nodeReviewStatsHref = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set('scope', effectiveScope);
-    return `/node-review-stats?${params.toString()}`;
-  }, [effectiveScope]);
+    const scopeValue = searchParams.get('scope');
+    return scopeValue ? `/node-review-stats?scope=${scopeValue}` : '/node-review-stats';
+  }, [searchParams]);
 
   const allLabelBadges = useMemo(
-    () => buildLabelBadges(labels, ENTITY_REVIEW_LABEL_LIMIT, effectiveScope),
-    [effectiveScope, labels]
+    () => buildLabelBadges(labels, ENTITY_REVIEW_LABEL_LIMIT, scopeForData),
+    [labels, scopeForData]
   );
 
   useEffect(() => {
@@ -96,7 +101,9 @@ export default function EntityReviewsPage() {
       setCursor(null);
       setHasMore(true);
       try {
-        const res = await fetch(`/api/reviews${queryString}`);
+        const res = await fetch(`/api/reviews${queryString}`, {
+          headers: specificUserId ? { 'x-review-user-id': specificUserId } : undefined
+        });
         const data = await res.json();
         if (!isActive) return;
         setReviews(data.reviews || []);
@@ -117,7 +124,7 @@ export default function EntityReviewsPage() {
     return () => {
       isActive = false;
     };
-  }, [queryString, user]);
+  }, [queryString, specificUserId, user]);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -138,7 +145,9 @@ export default function EntityReviewsPage() {
       const params = new URLSearchParams(queryString.replace(/^\?/, ''));
       params.set('cursor_created_at', cursor.created_at);
       params.set('cursor_review_id', String(cursor.review_id));
-      fetch(`/api/reviews?${params.toString()}`)
+      fetch(`/api/reviews?${params.toString()}`, {
+        headers: specificUserId ? { 'x-review-user-id': specificUserId } : undefined
+      })
         .then((res) => res.json())
         .then((data) => {
           setReviews((prev) => {
@@ -162,7 +171,7 @@ export default function EntityReviewsPage() {
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [cursor, hasMore, isLoading, isLoadingMore, queryString, reviews.length]);
+  }, [cursor, queryString, hasMore, isLoading, isLoadingMore, reviews.length, specificUserId]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -184,7 +193,6 @@ export default function EntityReviewsPage() {
     node_name?: string | null;
     node?: string | null;
     node_id?: string | null;
-    user_id?: string | null;
   }) {
     const params = new URLSearchParams(searchParams.toString());
     if (next.scope) {
@@ -212,14 +220,18 @@ export default function EntityReviewsPage() {
     } else if (next.node_id !== undefined) {
       params.delete('node_id');
     }
-    if (next.user_id) {
-      params.set('user_id', next.user_id);
-    } else if (next.user_id !== undefined) {
-      params.delete('user_id');
-    }
     const query = params.toString();
+    navigationRef.current = true;
     router.push(query ? `${pathname}?${query}` : pathname);
   }
+
+  useEffect(() => {
+    if (navigationRef.current) {
+      navigationRef.current = false;
+      return;
+    }
+    setSpecificUserId(null);
+  }, [searchParams]);
 
   useEffect(() => {
     let isActive = true;
@@ -268,34 +280,34 @@ export default function EntityReviewsPage() {
         <section className="section">
           <div className="filter-row filter-row--inline">
             <ScopeToggle
-              value={effectiveScope}
-              onChange={(scope) =>
-                updateQuery({
-                  scope,
-                  label: effectiveLabel,
-                  user_id: scope === 'my' ? user?.user_id ?? null : null
-                })
-              }
+              value={user ? effectiveScope : 'all'}
+              disabled={!user}
+              onChange={(scope) => {
+                setSpecificUserId(null);
+                updateQuery({ scope, label: effectiveLabel });
+              }}
             />
             <LabelBadgeRow
               badges={allLabelBadges}
               selectedLabel={effectiveLabel}
-              onSelect={(label) => updateQuery({ scope: effectiveScope, label })}
+              onSelect={(label) => updateQuery({ label })}
             />
           </div>
           <div className="filter-row">
             <NodeNameSearch
               value={nodeSearchValue}
               onCommit={(value) =>
+                !hasSpecificUserFilter &&
                 updateQuery({
                   node_name: value.trim() ? value : null,
                   node: null,
                   node_id: null
                 })
               }
-              onClear={() =>
-                updateQuery({ node_name: null, node: null, node_id: null, user_id: null })
-              }
+              onClear={() => {
+                setSpecificUserId(null);
+                updateQuery({ node_name: null, node: null, node_id: null });
+              }}
               forceClear={hasSpecificUserFilter}
               placeholder={
                 hasSpecificUserFilter
@@ -345,7 +357,10 @@ export default function EntityReviewsPage() {
                           {review.sentiment === 'positive' ? '😊' : '☹️'}
                         </span>
                       )}
-                      <Link className="review-link" href={`/reviews/${review.id}`}>
+                      <Link
+                        className="review-link"
+                        href={`/reviews/${review.id}${detailQueryString}`}
+                      >
                         {review.preview}
                       </Link>
                     </span>
@@ -354,12 +369,7 @@ export default function EntityReviewsPage() {
                     <button
                       type="button"
                       className="review-user"
-                      onClick={() =>
-                        updateQuery({
-                          scope: 'all',
-                          user_id: review.user_id
-                        })
-                      }
+                      onClick={() => setSpecificUserId(review.user_id)}
                     >
                       {review.user_id}
                     </button>{' '}

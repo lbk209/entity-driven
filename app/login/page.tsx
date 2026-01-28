@@ -12,22 +12,16 @@ export default function LoginPage() {
   const [message, setMessage] = useState('');
   const [isWorking, setIsWorking] = useState(false);
 
-  function buildRedirectUrl(role: 'user' | 'admin') {
-    const scope = role === 'admin' ? 'all' : 'my';
+  function buildRedirectUrl() {
     if (!redirectTo) {
-      return `/entity-reviews?scope=${scope}`;
+      return '/entity-reviews?scope=my';
     }
     try {
       const url = new URL(redirectTo, window.location.origin);
-      url.searchParams.set('scope', scope);
-      if (scope === 'my') {
-        url.searchParams.delete('node');
-        url.searchParams.delete('node_id');
-        url.searchParams.delete('node_name');
-      }
+      url.searchParams.set('scope', 'my');
       return `${url.pathname}${url.search}${url.hash}`;
     } catch {
-      return `/entity-reviews?scope=${scope}`;
+      return '/entity-reviews?scope=my';
     }
   }
 
@@ -50,9 +44,8 @@ export default function LoginPage() {
         setMessage(data.error || 'Authentication failed.');
         return;
       }
-      const data = (await res.json().catch(() => ({}))) as { role?: 'user' | 'admin' };
-      const role = data.role ?? 'user';
-      router.replace(buildRedirectUrl(role));
+      await res.json().catch(() => ({}));
+      router.replace(buildRedirectUrl());
     } finally {
       setIsWorking(false);
     }

@@ -26,7 +26,8 @@ type NodeReviewStatRow = {
 
 type NodeReviewLabelRow = {
   label: string;
-  node_count: number;
+  all_count: number;
+  my_count: number;
 };
 
 function nextSort<T extends string>(current: SortState<T>, key: T): SortState<T> {
@@ -72,14 +73,11 @@ export default function NodeReviewStatsPage() {
   const sortKeyParam = searchParams.get('sort_key');
   const sortDirParam = searchParams.get('sort_dir');
 
-  const { scope: effectiveScope, label: effectiveLabel, nodeName: nodeNameParam } = useMemo(
-    () =>
-      parseReviewFilters(searchParams, {
-        isLoggedIn: Boolean(user),
-        isAdmin: user?.role === 'admin'
-      }),
-    [searchParams, user]
+  const { scope: scopeParam, label: effectiveLabel, nodeName: nodeNameParam } = useMemo(
+    () => parseReviewFilters(searchParams),
+    [searchParams]
   );
+  const effectiveScope = scopeParam ?? 'all';
   const sort = useMemo<SortState<'name' | 'review_count' | 'bayes_score'>>(() => {
     const key =
       sortKeyParam === 'name' || sortKeyParam === 'bayes_score' || sortKeyParam === 'review_count'
@@ -90,10 +88,9 @@ export default function NodeReviewStatsPage() {
   }, [sortDirParam, sortKeyParam]);
 
   const entityReviewsHref = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set('scope', effectiveScope);
-    return `/entity-reviews?${params.toString()}`;
-  }, [effectiveScope]);
+    const scopeValue = searchParams.get('scope');
+    return scopeValue ? `/entity-reviews?scope=${scopeValue}` : '/entity-reviews';
+  }, [searchParams]);
 
   useEffect(() => {
     let isActive = true;
@@ -243,9 +240,9 @@ export default function NodeReviewStatsPage() {
     () =>
       labels.slice(0, NODE_REVIEW_LABEL_LIMIT).map((item) => ({
         label: item.label,
-        count: item.node_count
+        count: effectiveScope === 'my' ? item.my_count : item.all_count
       })),
-    [labels]
+    [effectiveScope, labels]
   );
 
   return (
@@ -270,7 +267,11 @@ export default function NodeReviewStatsPage() {
         </div>
         <section className="section">
           <div className="filter-row filter-row--inline">
-            <ScopeToggle value={effectiveScope} onChange={(scope) => updateQuery({ scope })} />
+            <ScopeToggle
+              value={user ? effectiveScope : 'all'}
+              disabled={!user}
+              onChange={(scope) => updateQuery({ scope })}
+            />
             <LabelBadgeRow
               badges={allLabelBadges}
               selectedLabel={effectiveLabel}
@@ -353,17 +354,25 @@ export default function NodeReviewStatsPage() {
                   tabIndex={0}
                   onClick={() => {
                     const params = new URLSearchParams();
-                    params.set('scope', effectiveScope);
+                    const scopeValue = searchParams.get('scope');
+                    if (scopeValue) {
+                      params.set('scope', scopeValue);
+                    }
                     params.set('node', String(row.node_id));
-                    router.push(`/entity-reviews?${params.toString()}`);
+                    const query = params.toString();
+                    router.push(query ? `/entity-reviews?${query}` : '/entity-reviews');
                   }}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter' && event.key !== ' ') return;
                     event.preventDefault();
                     const params = new URLSearchParams();
-                    params.set('scope', effectiveScope);
+                    const scopeValue = searchParams.get('scope');
+                    if (scopeValue) {
+                      params.set('scope', scopeValue);
+                    }
                     params.set('node', String(row.node_id));
-                    router.push(`/entity-reviews?${params.toString()}`);
+                    const query = params.toString();
+                    router.push(query ? `/entity-reviews?${query}` : '/entity-reviews');
                   }}
                 >
                   <div className="admin-cell-wrap">

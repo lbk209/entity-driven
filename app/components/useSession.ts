@@ -29,5 +29,14 @@ export function useSession() {
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleSessionChange = () => {
+      refresh();
+    };
+    window.addEventListener('session-change', handleSessionChange);
+    return () => window.removeEventListener('session-change', handleSessionChange);
+  }, [refresh]);
+
   return { user, isLoading, refresh };
 }

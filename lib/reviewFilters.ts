@@ -1,27 +1,23 @@
 export type ReviewScope = 'my' | 'all';
 
 export type ReviewFilterParams = {
-  scope: ReviewScope;
+  scope: ReviewScope | null;
   label: string | null;
   nodeId: number | null;
   nodeName: string;
   nodeNameTerms: string[];
-  userId: string | null;
 };
 
 export function normalizeScope(
-  scopeParam: string | null,
-  isLoggedIn: boolean,
-  isAdmin = false
-): ReviewScope {
+  scopeParam: string | null
+): ReviewScope | null {
   if (scopeParam === 'my') {
-    return isLoggedIn && !isAdmin ? 'my' : 'all';
+    return 'my';
   }
   if (scopeParam === 'all') {
     return 'all';
   }
-  if (isAdmin) return 'all';
-  return isLoggedIn ? 'my' : 'all';
+  return null;
 }
 
 export function normalizeLabel(labelParam: string | null) {
@@ -53,21 +49,13 @@ export function buildNodeNameTerms(nodeName: string) {
     .filter(Boolean);
 }
 
-export function normalizeUserId(userIdParam: string | null) {
-  if (!userIdParam) return null;
-  const trimmed = userIdParam.trim();
-  return trimmed ? trimmed : null;
-}
-
 export function parseReviewFilters(
-  searchParams: { get: (key: string) => string | null },
-  options: { isLoggedIn: boolean; isAdmin: boolean }
+  searchParams: { get: (key: string) => string | null }
 ): ReviewFilterParams {
-  const scope = normalizeScope(searchParams.get('scope'), options.isLoggedIn, options.isAdmin);
+  const scope = normalizeScope(searchParams.get('scope'));
   const label = normalizeLabel(searchParams.get('label'));
   const nodeId = normalizeNodeId(searchParams.get('node') ?? searchParams.get('node_id'));
   const nodeName = normalizeNodeName(searchParams.get('node_name'));
   const nodeNameTerms = buildNodeNameTerms(nodeName);
-  const userId = normalizeUserId(searchParams.get('user_id'));
-  return { scope, label, nodeId, nodeName, nodeNameTerms, userId };
+  return { scope, label, nodeId, nodeName, nodeNameTerms };
 }

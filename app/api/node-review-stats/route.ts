@@ -20,10 +20,7 @@ type NodeReviewStatRow = {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionUser = getSessionUser();
-  const { scope, label, nodeNameTerms } = parseReviewFilters(searchParams, {
-    isLoggedIn: Boolean(sessionUser),
-    isAdmin: sessionUser?.role === 'admin'
-  });
+  const { scope, label, nodeNameTerms } = parseReviewFilters(searchParams);
   const sortKeyRaw = searchParams.get('sort_key') || '';
   const sortKey =
     sortKeyRaw === 'name' || sortKeyRaw === 'bayes_score' || sortKeyRaw === 'review_count'
@@ -201,7 +198,8 @@ export async function GET(request: Request) {
   const pageRows = rows.slice(0, NODE_REVIEW_STATS_PAGE_SIZE);
 
   const labelRows = getTaxonomyNodeBadges(db, {
-    limit: NODE_REVIEW_LABEL_LIMIT
+    limit: NODE_REVIEW_LABEL_LIMIT,
+    userId: sessionUser?.id ?? null
   });
 
   const lastRow = pageRows.at(-1);

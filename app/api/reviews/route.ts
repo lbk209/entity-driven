@@ -10,10 +10,7 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const sessionUser = getSessionUser();
   const { searchParams } = new URL(request.url);
-  const { scope, label, nodeId, nodeNameTerms, userId } = parseReviewFilters(searchParams, {
-    isLoggedIn: Boolean(sessionUser),
-    isAdmin: sessionUser?.role === 'admin'
-  });
+  const { scope, label, nodeId, nodeNameTerms } = parseReviewFilters(searchParams);
   const cursorCreatedAt = searchParams.get('cursor_created_at');
   const cursorReviewIdRaw = searchParams.get('cursor_review_id');
   const cursorReviewId = cursorReviewIdRaw ? Number(cursorReviewIdRaw) : NaN;
@@ -34,11 +31,14 @@ export async function GET(request: Request) {
 
   const whereClauses: string[] = [];
   const params: Array<string | number> = [];
-  const effectiveUserId =
-    scope === 'my' && sessionUser ? sessionUser.user_id : userId;
-  if (effectiveUserId) {
+  const headerUserId = request.headers.get('x-review-user-id')?.trim();
+  if (scope === 'my' && sessionUser) {
+    whereClauses.push('r.user_id = ?');
+    params.push(sessionUser.id);
+  }
+  if (headerUserId) {
     whereClauses.push('u.user_id = ?');
-    params.push(effectiveUserId);
+    params.push(headerUserId);
   }
   if (label) {
     whereClauses.push(
