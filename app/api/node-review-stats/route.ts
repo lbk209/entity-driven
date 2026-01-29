@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
-import { parseReviewFilters } from '@/lib/reviewFilters';
+import { interpretReviewFilters } from '@/lib/reviewFilters';
 import {
   NODE_REVIEW_LABEL_LIMIT,
   NODE_REVIEW_STATS_PAGE_SIZE
@@ -20,7 +20,14 @@ type NodeReviewStatRow = {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionUser = getSessionUser();
-  const { scope, label, nodeNameTerms } = parseReviewFilters(searchParams);
+  const { filters, error } = interpretReviewFilters({
+    searchParams,
+    sessionUserId: sessionUser?.id ?? null
+  });
+  if (error) {
+    return NextResponse.json({ error }, { status: 400 });
+  }
+  const { label, nodeNameTerms, reviewerUserId } = filters;
   const sortKeyRaw = searchParams.get('sort_key') || '';
   const sortKey =
     sortKeyRaw === 'name' || sortKeyRaw === 'bayes_score' || sortKeyRaw === 'review_count'
@@ -41,14 +48,13 @@ export async function GET(request: Request) {
   const nameClause = nodeNameTerms.length > 0
     ? `AND ${nodeNameTerms.map(() => 'LOWER(n.name) LIKE ?').join(' AND ')}`
     : '';
-  const scopeClause =
-    scope === 'my' && sessionUser
-      ? 'AND EXISTS (SELECT 1 FROM review r WHERE r.node_id = nrs.node_id AND r.user_id = ?)'
-      : '';
+  const scopeClause = reviewerUserId !== null
+    ? 'AND EXISTS (SELECT 1 FROM review r WHERE r.node_id = nrs.node_id AND r.user_id = ?)'
+    : '';
   const params = [
     ...(label ? [label] : []),
     ...nodeNameTerms.map((term) => `%${term}%`),
-    ...(scope === 'my' && sessionUser ? [sessionUser.id] : [])
+    ...(reviewerUserId !== null ? [reviewerUserId] : [])
   ];
   const orderBy = (() => {
     if (sortKey === 'name') {
@@ -197,6 +203,7 @@ export async function GET(request: Request) {
   const hasMore = rows.length > NODE_REVIEW_STATS_PAGE_SIZE;
   const pageRows = rows.slice(0, NODE_REVIEW_STATS_PAGE_SIZE);
 
+  // Badges intentionally ignore list filters; they reflect global/all vs my counts only.
   const labelRows = getTaxonomyNodeBadges(db, {
     limit: NODE_REVIEW_LABEL_LIMIT,
     userId: sessionUser?.id ?? null

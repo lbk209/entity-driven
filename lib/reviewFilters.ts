@@ -8,6 +8,16 @@ export type ReviewFilterParams = {
   nodeNameTerms: string[];
 };
 
+export type ReviewFilterConflictPolicy =
+  | 'reject'
+  | 'ignore_user_when_scope'
+  | 'ignore_scope_when_user';
+
+export type InterpretedReviewFilters = ReviewFilterParams & {
+  reviewerUserId: number | null;
+  specificUserId: string | null;
+};
+
 export function normalizeScope(
   scopeParam: string | null
 ): ReviewScope | null {
@@ -40,6 +50,12 @@ export function normalizeNodeId(nodeIdParam: string | null) {
   return value;
 }
 
+export function normalizeSpecificUserId(headerUserId: string | null | undefined) {
+  if (!headerUserId) return null;
+  const trimmed = headerUserId.trim();
+  return trimmed ? trimmed : null;
+}
+
 export function buildNodeNameTerms(nodeName: string) {
   if (!nodeName) return [];
   return nodeName
@@ -58,4 +74,41 @@ export function parseReviewFilters(
   const nodeName = normalizeNodeName(searchParams.get('node_name'));
   const nodeNameTerms = buildNodeNameTerms(nodeName);
   return { scope, label, nodeId, nodeName, nodeNameTerms };
+}
+
+export function interpretReviewFilters(params: {
+  searchParams: { get: (key: string) => string | null };
+  headerUserId?: string | null;
+  sessionUserId?: number | null;
+  policy?: ReviewFilterConflictPolicy;
+}): { filters: InterpretedReviewFilters; error?: string } {
+  const base = parseReviewFilters(params.searchParams);
+  const policy = params.policy ?? 'ignore_user_when_scope';
+  let scope = base.scope;
+  let specificUserId = normalizeSpecificUserId(params.headerUserId);
+  let error: string | undefined;
+
+  if (scope === 'my' && specificUserId) {
+    if (policy === 'reject') {
+      error = 'scope and specific user filters cannot be combined';
+      specificUserId = null;
+    } else if (policy === 'ignore_scope_when_user') {
+      scope = null;
+    } else {
+      specificUserId = null;
+    }
+  }
+
+  const reviewerUserId =
+    scope === 'my' && params.sessionUserId ? params.sessionUserId : null;
+
+  return {
+    filters: {
+      ...base,
+      scope,
+      reviewerUserId,
+      specificUserId
+    },
+    error
+  };
 }

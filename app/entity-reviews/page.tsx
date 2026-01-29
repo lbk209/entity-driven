@@ -297,7 +297,6 @@ export default function EntityReviewsPage() {
             <NodeNameSearch
               value={nodeSearchValue}
               onCommit={(value) =>
-                !hasSpecificUserFilter &&
                 updateQuery({
                   node_name: value.trim() ? value : null,
                   node: null,
@@ -311,7 +310,7 @@ export default function EntityReviewsPage() {
               forceClear={hasSpecificUserFilter}
               placeholder={
                 hasSpecificUserFilter
-                  ? 'Click Clear first'
+                  ? 'Filtered by user'
                   : 'Type node name'
               }
             />

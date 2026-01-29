@@ -79,7 +79,7 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Review details show the entity badge before content with an edit action.
 - Reviews store `entity_name` directly with an optional `node_id` anchor.
 - Search/filter resolves via `nodes.name`/`review.node_id`, plus taxonomy labels and user IDs.
-- Entity Reviews API accepts `node` (id), `node_name` (name), `label`, and `user_id`.
+- Entity Reviews API accepts `node` (id), `node_name` (name), `label`, and a specific user filter via `x-review-user-id` header.
 - Entity Reviews node filter UX: `node=ID` deep links resolve to node name and populate the node name search box; the clear button removes `node`, `node_id`, `node_name`, and any specific user filter.
 - Entity Reviews user filter UX: clicking a user name filters reviews to that user while scope remains `all`; the search clear button clears the user filter and node-name search, and node search placeholder changes to “Click Clear first” while active.
 - Node Review Stats row click navigates to Entity Reviews with `scope` and `node` preserved in the URL.
@@ -96,6 +96,7 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Admin Reference tab uses radio buttons to switch between edge relations, node types, and taxonomy views; relation list wraps parent/child types and vertically centers row text; relation edit row supports multi-select type pickers and shows the relation description in a compact textarea below the form row.
 - Entity Reviews filter: node search uses a custom suggestion dropdown with max-height styling; suggestions show on focus and filter as you type; label badges and user-id filtering are supported.
 - Pagination limits live in `lib/constants.ts` as `ENTITY_REVIEWS_PAGE_SIZE`, `ENTITY_REVIEWS_MAX_ITEMS`, `NODE_REVIEW_STATS_PAGE_SIZE`, and `NODE_REVIEW_STATS_MAX_ITEMS`.
+- Filter semantics are centralized in `interpretReviewFilters` (`lib/reviewFilters.ts`): scope `my` is mutually exclusive with a specific user (default policy ignores the specific user when `scope=my`), while `scope=all` may be combined with a specific user; SQL consumes only the interpreted filter object.
 
 ## Schema
 

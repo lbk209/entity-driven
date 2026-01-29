@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb, previewText } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
-import { parseReviewFilters } from '@/lib/reviewFilters';
+import { interpretReviewFilters } from '@/lib/reviewFilters';
 import { ENTITY_REVIEW_LABEL_LIMIT, ENTITY_REVIEWS_PAGE_SIZE } from '@/lib/constants';
 import { getTaxonomyReviewBadges } from '@/lib/reviewBadges';
 
@@ -10,7 +10,15 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const sessionUser = getSessionUser();
   const { searchParams } = new URL(request.url);
-  const { scope, label, nodeId, nodeNameTerms } = parseReviewFilters(searchParams);
+  const { filters, error } = interpretReviewFilters({
+    searchParams,
+    headerUserId: request.headers.get('x-review-user-id'),
+    sessionUserId: sessionUser?.id ?? null
+  });
+  if (error) {
+    return NextResponse.json({ error }, { status: 400 });
+  }
+  const { label, nodeId, nodeNameTerms, reviewerUserId, specificUserId } = filters;
   const cursorCreatedAt = searchParams.get('cursor_created_at');
   const cursorReviewIdRaw = searchParams.get('cursor_review_id');
   const cursorReviewId = cursorReviewIdRaw ? Number(cursorReviewIdRaw) : NaN;
@@ -31,14 +39,13 @@ export async function GET(request: Request) {
 
   const whereClauses: string[] = [];
   const params: Array<string | number> = [];
-  const headerUserId = request.headers.get('x-review-user-id')?.trim();
-  if (scope === 'my' && sessionUser) {
+  if (reviewerUserId !== null) {
     whereClauses.push('r.user_id = ?');
-    params.push(sessionUser.id);
+    params.push(reviewerUserId);
   }
-  if (headerUserId) {
+  if (specificUserId) {
     whereClauses.push('u.user_id = ?');
-    params.push(headerUserId);
+    params.push(specificUserId);
   }
   if (label) {
     whereClauses.push(
@@ -156,6 +163,7 @@ export async function GET(request: Request) {
     }
   }
 
+  // Badges intentionally ignore list filters; they reflect global/all vs my counts only.
   const labels = getTaxonomyReviewBadges(db, {
     userId: sessionUser?.id ?? null,
     limit: ENTITY_REVIEW_LABEL_LIMIT
