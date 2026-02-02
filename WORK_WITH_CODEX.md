@@ -47,7 +47,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 ## API (Cursor Pagination)
 
 - Entity Reviews: `GET /api/reviews` supports `cursor_created_at` + `cursor_review_id`; response includes `nextCursor` with `{ created_at, review_id }`.
-- Node Review Stats: `GET /api/node-review-stats` supports `cursor_score`, `cursor_count`, `cursor_node_id`, plus `cursor_name` when sorting by name; response includes `nextCursor` with `{ score, count, node_id, name }`.
+- Node Review Stats: `GET /api/node-review-stats` supports `cursor_score`, `cursor_count`, `cursor_node_id`, plus `cursor_name` when sorting by name; response includes `nextCursor` with `{ score, count, node_id, name }` and keyword fields (`pos_keywords`, `neg_keywords`).
 
 ## Local Run
 
@@ -83,6 +83,7 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Entity Reviews node filter UX: `node=ID` deep links resolve to node name and populate the node name search box; the clear button removes `node`, `node_id`, `node_name`, and any specific user filter.
 - Entity Reviews user filter UX: clicking a user name filters reviews to that user while scope remains `all`; the search clear button clears the user filter and node-name search, and node search placeholder changes to “Click Clear first” while active.
 - Node Review Stats row click navigates to Entity Reviews with `scope` and `node` preserved in the URL.
+- Node Review Stats list now includes per-node positive/negative keyword strings from `node_review_keywords` (versioned via `NODE_REVIEW_KEYWORD_VERSION`).
 - Badge semantics are intentionally split:
   - Entity Reviews badges are review-driven (counts = review totals per taxonomy).
   - Node Review Stats badges are node-driven (counts = distinct reviewed nodes per taxonomy).
@@ -118,6 +119,14 @@ CREATE TABLE IF NOT EXISTS review (
   updated_at TEXT,
   FOREIGN KEY (user_id) REFERENCES user(id),
   FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_session (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES user(id)
 );
 
 CREATE TABLE IF NOT EXISTS node_type (
@@ -198,6 +207,17 @@ CREATE TABLE IF NOT EXISTS node_review_stats (
   FOREIGN KEY (node_id) REFERENCES nodes(id)
 );
 
+CREATE TABLE IF NOT EXISTS node_review_keywords (
+  node_id INTEGER NOT NULL,
+  polarity TEXT NOT NULL,
+  keyword TEXT NOT NULL,
+  score REAL NOT NULL,
+  rank INTEGER NOT NULL,
+  version TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (node_id) REFERENCES nodes(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_node_review_stats_review_count
   ON node_review_stats (review_count DESC);
 CREATE INDEX IF NOT EXISTS idx_node_review_stats_bayes_score
@@ -207,7 +227,7 @@ CREATE INDEX IF NOT EXISTS idx_node_review_stats_bayes_score
 ## Quick Context (No File Reads Needed)
 
 - Admin UI path: `/admin`
-- Tables: `user`, `review`, `review_sentiment`, `node_review_stats`, `nodes`, `edges`, `edge_relations`, `node_type`, `taxonomy`, `node_taxonomy`
+- Tables: `user`, `review`, `user_session`, `review_sentiment`, `node_review_stats`, `node_review_keywords`, `nodes`, `edges`, `edge_relations`, `node_type`, `taxonomy`, `node_taxonomy`
 - Nodes/edges use the same inline form layout as insert, with Update/Cancel/Delete.
 - Delete confirmation always appears; if referenced by reviews/edges, message is stronger
 - Merge nodes reassigns reviews and edges in a single transaction

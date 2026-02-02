@@ -4,7 +4,8 @@ import { getSessionUser } from '@/lib/auth';
 import { interpretReviewFilters } from '@/lib/reviewFilters';
 import {
   NODE_REVIEW_LABEL_LIMIT,
-  NODE_REVIEW_STATS_PAGE_SIZE
+  NODE_REVIEW_STATS_PAGE_SIZE,
+  NODE_REVIEW_KEYWORD_VERSION
 } from '@/lib/constants';
 import { getTaxonomyNodeBadges } from '@/lib/nodeBadges';
 
@@ -15,6 +16,8 @@ type NodeReviewStatRow = {
   node_name: string | null;
   review_count: number;
   bayes_score: number;
+  pos_keywords: string | null;
+  neg_keywords: string | null;
 };
 
 export async function GET(request: Request) {
@@ -51,7 +54,9 @@ export async function GET(request: Request) {
   const scopeClause = reviewerUserId !== null
     ? 'AND EXISTS (SELECT 1 FROM review r WHERE r.node_id = nrs.node_id AND r.user_id = ?)'
     : '';
+  const keywordVersion = NODE_REVIEW_KEYWORD_VERSION;
   const params = [
+    keywordVersion,
     ...(label ? [label] : []),
     ...nodeNameTerms.map((term) => `%${term}%`),
     ...(reviewerUserId !== null ? [reviewerUserId] : [])
@@ -184,9 +189,12 @@ export async function GET(request: Request) {
       SELECT nrs.node_id,
              n.name AS node_name,
              nrs.review_count,
-             nrs.bayes_score
+             nrs.bayes_score,
+             GROUP_CONCAT(CASE WHEN k.polarity = 'positive' THEN k.keyword END, ', ') AS pos_keywords,
+             GROUP_CONCAT(CASE WHEN k.polarity = 'negative' THEN k.keyword END, ', ') AS neg_keywords
       FROM node_review_stats nrs
       LEFT JOIN nodes n ON n.id = nrs.node_id
+      LEFT JOIN node_review_keywords k ON k.node_id = nrs.node_id AND k.version = ?
       ${label ? 'JOIN node_taxonomy nt ON nt.node_id = nrs.node_id' : ''}
       ${label ? 'JOIN taxonomy t ON t.id = nt.taxonomy_id' : ''}
       WHERE 1=1
@@ -194,6 +202,7 @@ export async function GET(request: Request) {
       ${nameClause}
       ${scopeClause}
       ${cursorClause.clause}
+      GROUP BY nrs.node_id, n.name, nrs.review_count, nrs.bayes_score
       ORDER BY ${orderBy}
       LIMIT ?
     `

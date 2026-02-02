@@ -4,3 +4,4 @@ export const ENTITY_REVIEWS_PAGE_SIZE = 25;
 export const ENTITY_REVIEWS_MAX_ITEMS = 200;
 export const NODE_REVIEW_STATS_PAGE_SIZE = 25;
 export const NODE_REVIEW_STATS_MAX_ITEMS = 200;
+export const NODE_REVIEW_KEYWORD_VERSION = 'kw_v1';

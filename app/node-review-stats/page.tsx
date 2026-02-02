@@ -22,6 +22,8 @@ type NodeReviewStatRow = {
   node_name: string | null;
   review_count: number;
   bayes_score: number;
+  pos_keywords: string | null;
+  neg_keywords: string | null;
 };
 
 type NodeReviewLabelRow = {
@@ -345,6 +347,8 @@ export default function NodeReviewStatsPage() {
                     </span>
                   </button>
                 </div>
+                <div>Positive keywords</div>
+                <div>Negative keywords</div>
               </div>
               {stats.map((row) => (
                 <div
@@ -380,6 +384,12 @@ export default function NodeReviewStatsPage() {
                   </div>
                   <div className="admin-cell-wrap">{row.review_count}</div>
                   <div className="admin-cell-wrap">{formatScore(row.bayes_score)}</div>
+                  <div className="admin-cell-wrap admin-cell-wrap--muted">
+                    {row.pos_keywords ?? ''}
+                  </div>
+                  <div className="admin-cell-wrap admin-cell-wrap--muted">
+                    {row.neg_keywords ?? ''}
+                  </div>
                 </div>
               ))}
               <div ref={loadMoreRef} />

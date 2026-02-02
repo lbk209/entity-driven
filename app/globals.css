@@ -422,7 +422,7 @@ textarea {
 }
 
 .admin-row--data-node-review-stats {
-  grid-template-columns: minmax(260px, 2fr) 140px 140px;
+  grid-template-columns: minmax(260px, 2fr) 120px 120px minmax(220px, 1.6fr) minmax(220px, 1.6fr);
 }
 
 .admin-row--data-node-review-stats > div {
@@ -480,6 +480,10 @@ textarea {
   overflow-wrap: anywhere;
   overflow: visible;
   text-overflow: clip;
+}
+
+.admin-cell-wrap--muted {
+  color: #8a8a8a;
 }
 
 .admin-row--data-relation .admin-cell-wrap {
