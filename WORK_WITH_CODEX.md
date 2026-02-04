@@ -7,10 +7,10 @@ This file captures context so we can continue quickly next time.
 Minimal Next.js App Router app with SQLite for local testing. Features:
 - Create users
 - Submit and edit reviews linked to entities (inline creation supported)
-- Filter reviews by linked node name/id, taxonomy label, and user id (via scope or specific user filter)
+- Filter reviews by entity name/id, taxonomy label, and user id (via scope or specific user filter)
 - Review previews use full content; entity badges are inline and mobile clamps to two lines
-- Node review stats page at `/node-review-stats` with server-side node-name search, taxonomy label filters, and sortable columns
-- Entity Reviews and Node Review Stats use cursor-based incremental loading with fixed page sizes and max caps
+- Top Entities page at `/top-entities` with server-side entity-name search, taxonomy label filters, and sortable columns
+- Entity Reviews and Top Entities use cursor-based incremental loading with fixed page sizes and max caps
 
 ## Stack
 
@@ -39,7 +39,8 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
   - `app/api/edges/route.ts`
   - `app/api/node-review-stats/route.ts`
 - Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/page.tsx`, `app/reviews/[id]/edit/page.tsx`
-- Node review stats UI: `app/node-review-stats/page.tsx`
+- Top Entities UI: `app/top-entities/page.tsx`
+- Legacy redirect: `app/node-review-stats/page.tsx`
 - Shared review form: `app/reviews/ReviewForm.tsx`
 - Admin UI: `app/admin/page.tsx`
 - Styles: `app/globals.css`
@@ -47,7 +48,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 ## API (Cursor Pagination)
 
 - Entity Reviews: `GET /api/reviews` supports `cursor_created_at` + `cursor_review_id`; response includes `nextCursor` with `{ created_at, review_id }`.
-- Node Review Stats: `GET /api/node-review-stats` supports `cursor_score`, `cursor_count`, `cursor_node_id`, plus `cursor_name` when sorting by name; response includes `nextCursor` with `{ score, count, node_id, name }` and keyword fields (`pos_keywords`, `neg_keywords`).
+- Top Entities: `GET /api/node-review-stats` supports `cursor_score`, `cursor_count`, `cursor_node_id`, plus `cursor_name` when sorting by name; response includes `nextCursor` with `{ score, count, node_id, name }` and keyword fields (`pos_keywords`, `neg_keywords`).
 
 ## Local Run
 
@@ -69,21 +70,21 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - SQLite file is created at `data/app.sqlite` on first API call.
 - `.gitignore` excludes `node_modules/`, `.next/`, `.next.bak/`, and `data/app.sqlite`.
 - Passwords are plain text (testing only).
-- Login redirect enforces role-aware default scope on success: users land with `scope=my`, admins with `scope=all`; when scope becomes `my`, node-related params (`node`, `node_id`, `node_name`) are stripped.
+- Login redirect enforces role-aware default scope on success: users land with `scope=my`, admins with `scope=all`.
 - Logout forces `scope=all` in the URL.
 - Review updates record `updated_at` and list sorting uses updated time.
 - Entity Reviews list is cursor-paginated and sorted by `created_at DESC, id DESC` with `(created_at, review_id)` cursor.
-- Node Review Stats list is cursor-paginated with `(score, count, node_id)` cursor; sorting is frozen during scrolling and resets on sort/filter changes.
+- Top Entities list is cursor-paginated with `(score, count, node_id)` cursor; sorting is frozen during scrolling and resets on sort/filter changes.
 - Review list shows real user IDs, entity badges, and uses a snap-scrolling list without a section header.
 - Entity picker uses autocomplete suggestions and stores the exact user-entered name.
 - Review details show the entity badge before content with an edit action.
-- Reviews store `entity_name` directly with an optional `node_id` anchor.
-- Search/filter resolves via `nodes.name`/`review.node_id`, plus taxonomy labels and user IDs.
-- Entity Reviews API accepts `node` (id), `node_name` (name), `label`, and a specific user filter via `x-review-user-id` header.
-- Entity Reviews node filter UX: `node=ID` deep links resolve to node name and populate the node name search box; the clear button removes `node`, `node_id`, `node_name`, and any specific user filter.
-- Entity Reviews user filter UX: clicking a user name filters reviews to that user while scope remains `all`; the search clear button clears the user filter and node-name search, and node search placeholder changes to “Click Clear first” while active.
-- Node Review Stats row click navigates to Entity Reviews with `scope` and `node` preserved in the URL.
-- Node Review Stats list now includes per-node positive/negative keyword strings from `node_review_keywords` (versioned via `NODE_REVIEW_KEYWORD_VERSION`).
+- Reviews store `entity_name` directly with optional `entity_id` (resolved vs unresolved reviews).
+- Search/filter uses `review.entity_name` for text search and `review.entity_id` for resolved-only entity filtering, plus taxonomy labels and user IDs.
+- Entity Reviews API accepts `entity` (id), `entity_id`, `entity_name`, `label`, and a specific user filter via `x-review-user-id` header.
+- Entity Reviews entity filter UX: `entity_id=ID` deep links populate the entity name search box when resolvable; clear removes `entity`, `entity_id`, and `entity_name` plus any specific user filter.
+- Entity Reviews user filter UX: clicking a user name filters reviews to that user while scope remains `all`; the search clear button clears the user filter and entity-name search, and the placeholder changes to “Click Clear first” while active.
+- Top Entities row click navigates to Entity Reviews with `scope` and `entity_id` preserved in the URL.
+- Top Entities list includes per-node positive/negative keyword strings from `node_review_keywords` (versioned via `NODE_REVIEW_KEYWORD_VERSION`).
 - Badge semantics are intentionally split:
   - Entity Reviews badges are review-driven (counts = review totals per taxonomy).
   - Node Review Stats badges are node-driven (counts = distinct reviewed nodes per taxonomy).
@@ -113,12 +114,12 @@ CREATE TABLE IF NOT EXISTS review (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   content TEXT NOT NULL,
-  node_id INTEGER,
+  entity_id INTEGER,
   entity_name TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT,
   FOREIGN KEY (user_id) REFERENCES user(id),
-  FOREIGN KEY (node_id) REFERENCES nodes(id)
+  FOREIGN KEY (entity_id) REFERENCES nodes(id)
 );
 
 CREATE TABLE IF NOT EXISTS user_session (

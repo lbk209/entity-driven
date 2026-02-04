@@ -8,8 +8,6 @@ export const runtime = 'nodejs';
 type ReviewRow = {
   id: number;
   entity_id: number | null;
-  node_id: number | null;
-  node_name: string | null;
   entity_name: string;
   user_id: string;
   content: string;
@@ -19,15 +17,15 @@ type ReviewRow = {
 
 function parseReviewUpdatePayload(body: unknown) {
   if (!body || typeof body !== 'object') return null;
-  const record = body as { id?: number; node_id?: number | null };
+  const record = body as { id?: number; entity_id?: number | null };
   const id = Number(record.id);
-  const nodeId =
-    record.node_id === null || record.node_id === undefined
+  const entityId =
+    record.entity_id === null || record.entity_id === undefined
       ? null
-      : Number(record.node_id);
+      : Number(record.entity_id);
   if (!Number.isFinite(id)) return null;
-  if (nodeId !== null && !Number.isFinite(nodeId)) return null;
-  return { id, nodeId };
+  if (entityId !== null && !Number.isFinite(entityId)) return null;
+  return { id, entityId };
 }
 
 export async function GET() {
@@ -40,9 +38,7 @@ export async function GET() {
     .prepare(
       `
       SELECT r.id,
-             COALESCE(r.entity_id, r.node_id) AS entity_id,
-             COALESCE(r.entity_id, r.node_id) AS node_id,
-             n.name AS node_name,
+             r.entity_id,
              r.entity_name,
              COALESCE(u.user_id, CAST(r.user_id AS TEXT)) AS user_id,
              r.content,
@@ -50,7 +46,6 @@ export async function GET() {
              r.updated_at
       FROM review r
       LEFT JOIN user u ON u.id = r.user_id
-      LEFT JOIN nodes n ON n.id = COALESCE(r.entity_id, r.node_id)
       ORDER BY COALESCE(r.updated_at, r.created_at) DESC
     `
     )
@@ -68,18 +63,18 @@ export async function PUT(request: Request) {
   const payload = parseReviewUpdatePayload(body);
   if (!payload) {
     return NextResponse.json(
-      { error: 'id and node_id required' },
+      { error: 'id and entity_id required' },
       { status: 400 }
     );
   }
 
   const db = getDb();
-  if (payload.nodeId !== null) {
+  if (payload.entityId !== null) {
     const nodeRow = db
       .prepare('SELECT id FROM nodes WHERE id = ?')
-      .get(payload.nodeId) as { id: number } | undefined;
+      .get(payload.entityId) as { id: number } | undefined;
     if (!nodeRow) {
-      return NextResponse.json({ error: 'node_id not found' }, { status: 400 });
+      return NextResponse.json({ error: 'entity_id not found' }, { status: 400 });
     }
   }
 
@@ -87,11 +82,11 @@ export async function PUT(request: Request) {
     .prepare(
       `
       UPDATE review
-      SET node_id = ?, entity_id = ?
+      SET entity_id = ?
       WHERE id = ?
     `
     )
-    .run(payload.nodeId, payload.nodeId, payload.id);
+    .run(payload.entityId, payload.id);
 
   if (!result.changes) {
     return NextResponse.json({ error: 'review not found' }, { status: 404 });

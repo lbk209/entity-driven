@@ -50,8 +50,7 @@ type NodeTaxonomy = {
 };
 type ReviewAdmin = {
   id: number;
-  node_id: number | null;
-  node_name: string | null;
+  entity_id: number | null;
   entity_name: string;
   user_id: string;
   content: string;
@@ -746,11 +745,8 @@ export default function EdgesAdminPage() {
       if (reviewSearchField === 'review') {
         return review.content.toLowerCase().includes(term);
       }
-      const nodeName =
-        (review.node_id ? nodeMap.get(review.node_id)?.name : null) ??
-        review.node_name ??
-        '';
-      return nodeName.toLowerCase().includes(term);
+      const entityLabel = review.entity_id ? nodeMap.get(review.entity_id)?.name ?? '' : '';
+      return entityLabel.toLowerCase().includes(term);
     });
   }, [nodeMap, reviewSearch, reviewSearchField, reviews]);
 
@@ -764,11 +760,9 @@ export default function EdgesAdminPage() {
       if (reviewSort.key === 'user') {
         return compareText(a.user_id.toLowerCase(), b.user_id.toLowerCase()) * dir;
       }
-      const aNode =
-        (a.node_id ? nodeMap.get(a.node_id)?.name : null) ?? a.node_name ?? '';
-      const bNode =
-        (b.node_id ? nodeMap.get(b.node_id)?.name : null) ?? b.node_name ?? '';
-      return compareText(aNode.toLowerCase(), bNode.toLowerCase()) * dir;
+      const aEntity = a.entity_id ? nodeMap.get(a.entity_id)?.name ?? '' : '';
+      const bEntity = b.entity_id ? nodeMap.get(b.entity_id)?.name ?? '' : '';
+      return compareText(aEntity.toLowerCase(), bEntity.toLowerCase()) * dir;
     });
     return list;
   }, [filteredReviews, nodeMap, reviewSort]);
@@ -1418,7 +1412,7 @@ export default function EdgesAdminPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: review.id,
-        node_id: review.node_id
+        entity_id: review.entity_id
       })
     });
     if (!res.ok) {
@@ -2588,15 +2582,15 @@ export default function EdgesAdminPage() {
                 <div className="row review-footer admin-row admin-row--form admin-row--form-review admin-form">
                   <div>
                     <select
-                      className={editReview.node_id ? '' : 'admin-select--placeholder'}
+                      className={editReview.entity_id ? '' : 'admin-select--placeholder'}
                       aria-label="Linked node"
-                      value={editReview.node_id ?? ''}
+                      value={editReview.entity_id ?? ''}
                       onChange={(event) =>
                         setEditReview((prev) => {
                           if (!prev) return prev;
                           return {
                             ...prev,
-                            node_id: event.target.value
+                            entity_id: event.target.value
                               ? Number(event.target.value)
                               : null
                           };
@@ -3562,17 +3556,16 @@ export default function EdgesAdminPage() {
               )}
               {reviews.length === 0 && <small>No reviews found.</small>}
               {sortedReviews.map((review) => {
-                const nodeName =
-                  (review.node_id ? nodeMap.get(review.node_id)?.name : null) ??
-                  review.node_name ??
-                  '-';
+                const entityLabel = review.entity_id
+                  ? nodeMap.get(review.entity_id)?.name ?? '-'
+                  : '-';
                 return (
                   <div
                     className="row review-footer admin-row admin-row--data admin-row--data-review admin-row--clickable"
                     key={review.id}
                     onClick={() => startEditReview(review)}
                   >
-                    <div className="admin-cell-wrap">{nodeName}</div>
+                    <div className="admin-cell-wrap">{entityLabel}</div>
                     <div className="admin-cell-wrap">{review.entity_name}</div>
                     <div>{review.user_id}</div>
                     <div>

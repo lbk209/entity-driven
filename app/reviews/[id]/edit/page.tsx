@@ -22,8 +22,7 @@ function getReviewForEdit(id: number): ReviewEditData | null {
       `
       SELECT r.id, r.content, r.user_id,
              r.entity_name,
-             r.entity_id,
-             r.node_id
+             r.entity_id
       FROM review r
       WHERE r.id = ?
     `
@@ -35,7 +34,6 @@ function getReviewForEdit(id: number): ReviewEditData | null {
         content: string;
         entity_name: string;
         entity_id: number | null;
-        node_id: number | null;
       }
     | undefined;
 
@@ -46,7 +44,7 @@ function getReviewForEdit(id: number): ReviewEditData | null {
     user_id: row.user_id,
     content: row.content,
     entity_name: row.entity_name,
-    entity_id: row.entity_id ?? row.node_id
+    entity_id: row.entity_id
   };
 }
 

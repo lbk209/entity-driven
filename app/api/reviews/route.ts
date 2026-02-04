@@ -34,8 +34,6 @@ export async function GET(request: Request) {
     updated_at: string | null;
     entity_name: string;
     entity_id: number | null;
-    node_id: number | null;
-    node_name: string | null;
   }> = [];
 
   const whereClauses: string[] = [];
@@ -55,7 +53,7 @@ export async function GET(request: Request) {
         SELECT 1
         FROM node_taxonomy nt
         JOIN taxonomy t ON t.id = nt.taxonomy_id
-        WHERE nt.node_id = COALESCE(r.entity_id, r.node_id)
+        WHERE nt.node_id = r.entity_id
           AND t.label = ?
       )
       `
@@ -63,11 +61,12 @@ export async function GET(request: Request) {
     params.push(label);
   }
   if (nodeId !== null) {
-    whereClauses.push('COALESCE(r.entity_id, r.node_id) = ?');
+    whereClauses.push('r.entity_id = ?');
     params.push(nodeId);
   }
   if (nodeNameTerms.length > 0) {
-    whereClauses.push(nodeNameTerms.map(() => 'LOWER(n.name) LIKE ?').join(' AND '));
+    // Name search is text-based and includes unresolved reviews (entity_id IS NULL).
+    whereClauses.push(nodeNameTerms.map(() => 'LOWER(r.entity_name) LIKE ?').join(' AND '));
     params.push(...nodeNameTerms.map((term) => `%${term}%`));
   }
   if (cursorCreatedAt && Number.isFinite(cursorReviewId)) {
@@ -80,14 +79,14 @@ export async function GET(request: Request) {
   rows = db
     .prepare(
       `
+      -- Reviews are either resolved (entity_id) or unresolved (entity_id IS NULL).
+      -- Unresolved reviews should not join to nodes.
       SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
-             r.entity_name,
-             COALESCE(r.entity_id, r.node_id) AS entity_id,
-             r.node_id,
-             n.name AS node_name
+             COALESCE(n.name, r.entity_name) AS entity_name,
+             r.entity_id
       FROM review r
       JOIN user u ON u.id = r.user_id
-      LEFT JOIN nodes n ON n.id = COALESCE(r.entity_id, r.node_id)
+      LEFT JOIN nodes n ON n.id = r.entity_id
       WHERE ${whereClause}
       ORDER BY r.created_at DESC, r.id DESC
       LIMIT ?
@@ -105,10 +104,6 @@ export async function GET(request: Request) {
     preview: string;
     entity_name: string;
     entity_id: number | null;
-    /** @deprecated legacy compatibility; prefer entity_id */
-    node_id: number | null;
-    /** @deprecated legacy compatibility; prefer entity_name */
-    node_name: string | null;
     sentiment?: 'positive' | 'negative';
   }> = pageRows.map((row) => ({
     id: row.id,
@@ -117,9 +112,7 @@ export async function GET(request: Request) {
     updated_at: row.updated_at,
     preview: previewText(row.content),
     entity_name: row.entity_name,
-    entity_id: row.entity_id,
-    node_id: row.node_id,
-    node_name: row.node_name
+    entity_id: row.entity_id
   }));
 
   const hasSentimentTable = db

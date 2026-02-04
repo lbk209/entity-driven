@@ -16,13 +16,11 @@ CREATE TABLE IF NOT EXISTS review (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   content TEXT NOT NULL,
-  node_id INTEGER,
   entity_id INTEGER,
   entity_name TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT,
   FOREIGN KEY (user_id) REFERENCES user(id),
-  FOREIGN KEY (node_id) REFERENCES nodes(id),
   FOREIGN KEY (entity_id) REFERENCES nodes(id)
 );
 
@@ -545,24 +543,18 @@ export function getDb() {
     name: string;
   }>;
   const reviewHasEntityName = reviewColumns.some((column) => column.name === 'entity_name');
-  const reviewHasNodeId = reviewColumns.some((column) => column.name === 'node_id');
   const reviewHasEntityId = reviewColumns.some((column) => column.name === 'entity_id');
   const hasUpdatedAt = reviewColumns.some((column) => column.name === 'updated_at');
+  const reviewHasNodeId = reviewColumns.some((column) => column.name === 'node_id');
   const needsReviewRebuild =
     !reviewHasEntityName ||
-    !reviewHasNodeId ||
     !reviewHasEntityId ||
-    !hasForeignKey(db, 'review', 'node_id', 'nodes', 'id') ||
+    reviewHasNodeId ||
     !hasForeignKey(db, 'review', 'entity_id', 'nodes', 'id');
   if (needsReviewRebuild) {
     const reviewEntityNameExpr = reviewHasEntityName
       ? "COALESCE(r.entity_name, re.alias, '')"
       : "COALESCE(re.alias, '')";
-    const reviewNodeIdExpr = reviewHasNodeId
-      ? 'r.node_id'
-      : reviewHasEntityId
-        ? 'r.entity_id'
-        : 're.node_id';
     const reviewEntityIdExpr = reviewHasEntityId
       ? 'r.entity_id'
       : reviewHasNodeId
@@ -576,13 +568,6 @@ export function getDb() {
       : reviewHasEntityName
         ? 'r.entity_name'
         : "''";
-    const reviewNodeIdValue = reviewEntityExists?.name
-      ? `COALESCE(${reviewNodeIdExpr}, re.node_id)`
-      : reviewHasNodeId
-        ? 'r.node_id'
-        : reviewHasEntityId
-          ? 'r.entity_id'
-          : 'NULL';
     const reviewEntityIdValue = reviewEntityExists?.name
       ? `COALESCE(${reviewEntityIdExpr}, re.node_id)`
       : reviewHasEntityId
@@ -597,21 +582,18 @@ export function getDb() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         content TEXT NOT NULL,
-        node_id INTEGER,
         entity_id INTEGER,
         entity_name TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT,
         FOREIGN KEY (user_id) REFERENCES user(id),
-        FOREIGN KEY (node_id) REFERENCES nodes(id),
         FOREIGN KEY (entity_id) REFERENCES nodes(id)
       );
-      INSERT INTO review (id, user_id, content, node_id, entity_id, entity_name, created_at, updated_at)
+      INSERT INTO review (id, user_id, content, entity_id, entity_name, created_at, updated_at)
       SELECT
         r.id,
         r.user_id,
         r.content,
-        ${reviewNodeIdValue},
         ${reviewEntityIdValue},
         ${reviewEntityNameValue},
         r.created_at,
@@ -625,26 +607,10 @@ export function getDb() {
     if (!hasUpdatedAt) {
       db.exec('ALTER TABLE review ADD COLUMN updated_at TEXT');
     }
-    db.exec(`
-      UPDATE review
-      SET entity_id = COALESCE(entity_id, node_id)
-      WHERE entity_id IS NULL;
-    `);
-    db.exec(`
-      UPDATE review
-      SET node_id = COALESCE(node_id, entity_id)
-      WHERE node_id IS NULL;
-    `);
     if (reviewEntityExists?.name) {
       db.exec(`
         UPDATE review
         SET entity_id = COALESCE(
-              entity_id,
-              node_id,
-              (SELECT node_id FROM review_entity re WHERE re.review_id = review.id)
-            ),
-            node_id = COALESCE(
-              node_id,
               entity_id,
               (SELECT node_id FROM review_entity re WHERE re.review_id = review.id)
             ),

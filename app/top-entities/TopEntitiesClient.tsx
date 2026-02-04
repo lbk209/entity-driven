@@ -211,12 +211,10 @@ export default function NodeReviewStatsClient() {
     scope?: string | null;
     label?: string | null;
     entity_name?: string | null;
-    node_name?: string | null;
     sort_key?: string | null;
     sort_dir?: string | null;
   }) {
-    // Prefer entity_name query param; node_name is legacy compatibility.
-    // TODO(phase5): Remove legacy node_name query handling once deprecation completes.
+    // Prefer entity_name query param.
     const params = new URLSearchParams(searchParams.toString());
     if (next.scope) {
       params.set('scope', next.scope);
@@ -232,9 +230,6 @@ export default function NodeReviewStatsClient() {
       params.set('entity_name', next.entity_name);
     } else if (next.entity_name !== undefined) {
       params.delete('entity_name');
-    }
-    if (next.node_name !== undefined) {
-      params.delete('node_name');
     }
     if (next.sort_key) {
       params.set('sort_key', next.sort_key);
@@ -297,11 +292,10 @@ export default function NodeReviewStatsClient() {
               value={entityNameParam}
               onCommit={(value) =>
                 updateQuery({
-                  entity_name: value.trim() ? value : null,
-                  node_name: null
+                  entity_name: value.trim() ? value : null
                 })
               }
-              onClear={() => updateQuery({ entity_name: null, node_name: null })}
+              onClear={() => updateQuery({ entity_name: null })}
             />
           </div>
         </section>
@@ -378,9 +372,6 @@ export default function NodeReviewStatsClient() {
                       params.set('scope', scopeValue);
                     }
                     params.set('entity_id', String(row.node_id));
-                    params.delete('node');
-                    params.delete('node_id');
-                    params.delete('node_name');
                     const query = params.toString();
                     router.push(query ? `/entity-reviews?${query}` : '/entity-reviews');
                   }}
@@ -393,9 +384,6 @@ export default function NodeReviewStatsClient() {
                       params.set('scope', scopeValue);
                     }
                     params.set('entity_id', String(row.node_id));
-                    params.delete('node');
-                    params.delete('node_id');
-                    params.delete('node_name');
                     const query = params.toString();
                     router.push(query ? `/entity-reviews?${query}` : '/entity-reviews');
                   }}

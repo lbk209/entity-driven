@@ -18,12 +18,7 @@ type Review = {
   updated_at: string | null;
   preview: string;
   entity_name: string;
-  // Canonical entity id; node_id is legacy compatibility.
   entity_id: number | null;
-  /** @deprecated legacy fallback for older API clients */
-  node_id: number | null;
-  /** @deprecated legacy fallback for older API clients */
-  node_name: string | null;
   sentiment?: 'positive' | 'negative';
 };
 
@@ -202,12 +197,8 @@ export default function EntityReviewsClient() {
     entity_name?: string | null;
     entity?: string | null;
     entity_id?: string | null;
-    node_name?: string | null;
-    node?: string | null;
-    node_id?: string | null;
   }) {
-    // Prefer entity_* query params; node_* is legacy compatibility.
-    // TODO(phase5): Remove legacy node_* query handling once deprecation completes.
+    // Prefer entity_* query params.
     const params = new URLSearchParams(searchParams.toString());
     if (next.scope) {
       params.set('scope', next.scope);
@@ -233,15 +224,6 @@ export default function EntityReviewsClient() {
       params.set('entity_id', next.entity_id);
     } else if (next.entity_id !== undefined) {
       params.delete('entity_id');
-    }
-    if (next.node_name !== undefined) {
-      params.delete('node_name');
-    }
-    if (next.node !== undefined) {
-      params.delete('node');
-    }
-    if (next.node_id !== undefined) {
-      params.delete('node_id');
     }
     const query = params.toString();
     navigationRef.current = true;
@@ -323,10 +305,7 @@ export default function EntityReviewsClient() {
                 updateQuery({
                   entity_name: value.trim() ? value : null,
                   entity: null,
-                  entity_id: null,
-                  node_name: null,
-                  node: null,
-                  node_id: null
+                  entity_id: null
                 })
               }
               onClear={() => {
@@ -334,10 +313,7 @@ export default function EntityReviewsClient() {
                 updateQuery({
                   entity_name: null,
                   entity: null,
-                  entity_id: null,
-                  node_name: null,
-                  node: null,
-                  node_id: null
+                  entity_id: null
                 });
               }}
               forceClear={hasSpecificUserFilter}
@@ -363,8 +339,8 @@ export default function EntityReviewsClient() {
           {!isLoading &&
             !error &&
             reviews.map((review) => {
-              const reviewEntityId = review.entity_id ?? review.node_id;
-              const entityLabel = review.node_name ?? review.entity_name;
+              const reviewEntityId = review.entity_id;
+              const entityLabel = review.entity_name;
               return (
                 <li key={review.id}>
                   <div className="review-line">
@@ -376,10 +352,7 @@ export default function EntityReviewsClient() {
                           updateQuery({
                             entity_id: String(reviewEntityId),
                             entity: null,
-                            entity_name: null,
-                            node: null,
-                            node_name: null,
-                            node_id: null
+                            entity_name: null
                           });
                         }}
                       >

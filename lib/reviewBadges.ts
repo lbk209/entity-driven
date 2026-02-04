@@ -16,11 +16,12 @@ export function getTaxonomyReviewBadges(
     return db
       .prepare(
         `
+        -- Only resolved reviews (entity_id IS NOT NULL) participate in taxonomy badges.
         SELECT t.label,
                COUNT(DISTINCT r.id) AS all_count,
                0 AS my_count
         FROM review r
-        JOIN node_taxonomy nt ON nt.node_id = COALESCE(r.entity_id, r.node_id)
+        JOIN node_taxonomy nt ON nt.node_id = r.entity_id
         JOIN taxonomy t ON t.id = nt.taxonomy_id
         GROUP BY t.label
         ORDER BY all_count DESC, t.label ASC
@@ -33,11 +34,12 @@ export function getTaxonomyReviewBadges(
   return db
     .prepare(
       `
+      -- Only resolved reviews (entity_id IS NOT NULL) participate in taxonomy badges.
       WITH all_counts AS (
         SELECT t.label AS label,
                COUNT(DISTINCT r.id) AS all_count
         FROM review r
-        JOIN node_taxonomy nt ON nt.node_id = COALESCE(r.entity_id, r.node_id)
+        JOIN node_taxonomy nt ON nt.node_id = r.entity_id
         JOIN taxonomy t ON t.id = nt.taxonomy_id
         GROUP BY t.label
       ),
@@ -45,7 +47,7 @@ export function getTaxonomyReviewBadges(
         SELECT t.label AS label,
                COUNT(DISTINCT r.id) AS my_count
         FROM review r
-        JOIN node_taxonomy nt ON nt.node_id = COALESCE(r.entity_id, r.node_id)
+        JOIN node_taxonomy nt ON nt.node_id = r.entity_id
         JOIN taxonomy t ON t.id = nt.taxonomy_id
         WHERE r.user_id = ?
         GROUP BY t.label

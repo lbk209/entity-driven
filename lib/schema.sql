@@ -9,13 +9,11 @@ CREATE TABLE IF NOT EXISTS review (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   content TEXT NOT NULL,
-  node_id INTEGER,
   entity_id INTEGER,
   entity_name TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT,
   FOREIGN KEY (user_id) REFERENCES user(id),
-  FOREIGN KEY (node_id) REFERENCES nodes(id),
   FOREIGN KEY (entity_id) REFERENCES nodes(id)
 );
 

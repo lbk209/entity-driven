@@ -15,7 +15,7 @@ export function canModifyNode(user: SessionUser | null, nodeId: number) {
   if (user.role === 'admin') return true;
   const db = getDb();
   const row = db
-    .prepare('SELECT 1 FROM review WHERE user_id = ? AND COALESCE(entity_id, node_id) = ? LIMIT 1')
+    .prepare('SELECT 1 FROM review WHERE user_id = ? AND entity_id = ? LIMIT 1')
     .get(user.id, nodeId);
   return Boolean(row);
 }
