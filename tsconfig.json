@@ -12,6 +12,10 @@
     "noEmit": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    "types": [
+      "react",
+      "next"
+    ],
     "baseUrl": ".",
     "paths": {
       "@/*": [

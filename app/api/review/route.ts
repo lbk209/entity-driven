@@ -23,30 +23,37 @@ export async function POST(request: Request) {
   if (!entityNameRaw.trim()) {
     return NextResponse.json({ error: 'entity_name required' }, { status: 400 });
   }
-  const nodeId =
+  const entityId =
+    body.entity_id === null || body.entity_id === undefined ? null : Number(body.entity_id);
+  const nodeIdLegacy =
     body.node_id === null || body.node_id === undefined ? null : Number(body.node_id);
-  if (nodeId !== null && !Number.isFinite(nodeId)) {
+  const effectiveEntityId = entityId ?? nodeIdLegacy;
+  if (entityId !== null && !Number.isFinite(entityId)) {
+    return NextResponse.json({ error: 'entity_id must be a number' }, { status: 400 });
+  }
+  if (nodeIdLegacy !== null && !Number.isFinite(nodeIdLegacy)) {
     return NextResponse.json({ error: 'node_id must be a number' }, { status: 400 });
   }
 
   const tx = db.transaction(() => {
     const now = new Date().toISOString();
     const reviewStmt = db.prepare(
-      `INSERT INTO review (user_id, content, node_id, entity_name, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO review (user_id, content, node_id, entity_id, entity_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     );
-    if (nodeId !== null) {
+    if (effectiveEntityId !== null) {
       const nodeRow = db
         .prepare('SELECT id FROM nodes WHERE id = ?')
-        .get(nodeId) as { id: number } | undefined;
+        .get(effectiveEntityId) as { id: number } | undefined;
       if (!nodeRow) {
-        throw new Error('node_id not found');
+        throw new Error('entity_id not found');
       }
     }
     const reviewResult = reviewStmt.run(
       sessionUser.id,
       body.content,
-      nodeId,
+      effectiveEntityId,
+      effectiveEntityId,
       entityNameRaw,
       now,
       now
@@ -104,30 +111,43 @@ export async function PUT(request: Request) {
   if (!entityNameRaw.trim()) {
     return NextResponse.json({ error: 'entity_name required' }, { status: 400 });
   }
-  const nodeId =
+  const entityId =
+    body.entity_id === null || body.entity_id === undefined ? null : Number(body.entity_id);
+  const nodeIdLegacy =
     body.node_id === null || body.node_id === undefined ? null : Number(body.node_id);
-  if (nodeId !== null && !Number.isFinite(nodeId)) {
+  const effectiveEntityId = entityId ?? nodeIdLegacy;
+  if (entityId !== null && !Number.isFinite(entityId)) {
+    return NextResponse.json({ error: 'entity_id must be a number' }, { status: 400 });
+  }
+  if (nodeIdLegacy !== null && !Number.isFinite(nodeIdLegacy)) {
     return NextResponse.json({ error: 'node_id must be a number' }, { status: 400 });
   }
 
   const tx = db.transaction(() => {
-    if (nodeId !== null) {
+    if (effectiveEntityId !== null) {
       const nodeRow = db
         .prepare('SELECT id FROM nodes WHERE id = ?')
-        .get(nodeId) as { id: number } | undefined;
+        .get(effectiveEntityId) as { id: number } | undefined;
       if (!nodeRow) {
-        throw new Error('node_id not found');
+        throw new Error('entity_id not found');
       }
     }
     db
       .prepare(
         `
         UPDATE review
-        SET content = ?, node_id = ?, entity_name = ?, updated_at = ?
+        SET content = ?, node_id = ?, entity_id = ?, entity_name = ?, updated_at = ?
         WHERE id = ?
       `
       )
-      .run(body.content, nodeId, entityNameRaw, new Date().toISOString(), reviewId);
+      .run(
+        body.content,
+        effectiveEntityId,
+        effectiveEntityId,
+        entityNameRaw,
+        new Date().toISOString(),
+        reviewId
+      );
   });
 
   try {

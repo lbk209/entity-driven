@@ -3,7 +3,15 @@ export type ReviewScope = 'my' | 'all';
 export type ReviewFilterParams = {
   scope: ReviewScope | null;
   label: string | null;
+  /**
+   * Canonical entity id derived from entity_* params.
+   * Legacy node_* params are normalized here for backward compatibility.
+   */
   nodeId: number | null;
+  /**
+   * Canonical entity name derived from entity_* params.
+   * Legacy node_* params are normalized here for backward compatibility.
+   */
   nodeName: string;
   nodeNameTerms: string[];
 };
@@ -70,8 +78,17 @@ export function parseReviewFilters(
 ): ReviewFilterParams {
   const scope = normalizeScope(searchParams.get('scope'));
   const label = normalizeLabel(searchParams.get('label'));
-  const nodeId = normalizeNodeId(searchParams.get('node') ?? searchParams.get('node_id'));
-  const nodeName = normalizeNodeName(searchParams.get('node_name'));
+  // NOTE: This is the single normalization point for legacy node_* params.
+  // Prefer entity_* params; node_* is legacy compatibility.
+  const nodeId = normalizeNodeId(
+    searchParams.get('entity_id') ??
+      searchParams.get('entity') ??
+      searchParams.get('node') ??
+      searchParams.get('node_id')
+  );
+  const nodeName = normalizeNodeName(
+    searchParams.get('entity_name') ?? searchParams.get('node_name')
+  );
   const nodeNameTerms = buildNodeNameTerms(nodeName);
   return { scope, label, nodeId, nodeName, nodeNameTerms };
 }

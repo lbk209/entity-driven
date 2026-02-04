@@ -43,8 +43,8 @@ export async function POST(request: Request) {
 
   const tx = db.transaction(() => {
     db
-      .prepare('UPDATE review SET node_id = ? WHERE node_id = ?')
-      .run(payload.targetId, payload.sourceId);
+      .prepare('UPDATE review SET node_id = ?, entity_id = ? WHERE COALESCE(entity_id, node_id) = ?')
+      .run(payload.targetId, payload.targetId, payload.sourceId);
 
     db.prepare(
       `

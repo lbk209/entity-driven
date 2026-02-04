@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     ? `AND ${nodeNameTerms.map(() => 'LOWER(n.name) LIKE ?').join(' AND ')}`
     : '';
   const scopeClause = reviewerUserId !== null
-    ? 'AND EXISTS (SELECT 1 FROM review r WHERE r.node_id = nrs.node_id AND r.user_id = ?)'
+    ? 'AND EXISTS (SELECT 1 FROM review r WHERE COALESCE(r.entity_id, r.node_id) = nrs.node_id AND r.user_id = ?)'
     : '';
   const keywordVersion = NODE_REVIEW_KEYWORD_VERSION;
   const params = [

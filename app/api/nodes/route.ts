@@ -46,7 +46,7 @@ export async function GET() {
     .prepare(
       `
       SELECT n.id, n.name, n.type,
-             (SELECT COUNT(*) FROM review r WHERE r.node_id = n.id) AS review_count,
+             (SELECT COUNT(*) FROM review r WHERE COALESCE(r.entity_id, r.node_id) = n.id) AS review_count,
              (SELECT COUNT(*) FROM edges e WHERE e.parent_id = n.id OR e.child_id = n.id) AS edge_count
       FROM nodes n
       ORDER BY n.name ASC, n.type ASC
@@ -142,8 +142,8 @@ export async function PUT(request: Request) {
       .run(payload.id, payload.name, payload.type, payload.originalId);
     if (payload.id !== payload.originalId) {
       db
-        .prepare('UPDATE review SET node_id = ? WHERE node_id = ?')
-        .run(payload.id, payload.originalId);
+        .prepare('UPDATE review SET node_id = ?, entity_id = ? WHERE COALESCE(entity_id, node_id) = ?')
+        .run(payload.id, payload.id, payload.originalId);
       db
         .prepare('UPDATE edges SET parent_id = ? WHERE parent_id = ?')
         .run(payload.id, payload.originalId);
@@ -187,7 +187,7 @@ export async function DELETE(request: Request) {
     .prepare(
       `
       SELECT
-        (SELECT COUNT(*) FROM review r WHERE r.node_id = ?) AS review_count,
+        (SELECT COUNT(*) FROM review r WHERE COALESCE(r.entity_id, r.node_id) = ?) AS review_count,
         (SELECT COUNT(*) FROM edges e WHERE e.parent_id = ? OR e.child_id = ?) AS edge_count
     `
     )

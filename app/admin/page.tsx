@@ -145,7 +145,7 @@ function getNodeTypeById(nodes: NodeOption[], nodeId: number | null) {
 
 function highlightText(text: string, term: string) {
   if (!term) return text;
-  const parts: Array<string | JSX.Element> = [];
+  const parts: Array<string | React.JSX.Element> = [];
   let startIndex = 0;
   let matchIndex = 0;
   while (true) {
@@ -1626,7 +1626,7 @@ export default function EdgesAdminPage() {
     setEditNodeTaxonomy(null);
   }
 
-  async function deleteEdgeRelation(relation: EdgeRelation) {
+  async function deleteEdgeRelation(relation: { relation: string }) {
     setStatus('');
     if (!window.confirm('Delete this relation?')) return;
     const res = await fetch('/api/edge-relations', {

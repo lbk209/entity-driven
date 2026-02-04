@@ -16,10 +16,10 @@ export function getTaxonomyNodeBadges(
       .prepare(
         `
         SELECT t.label,
-               COUNT(DISTINCT r.node_id) AS all_count,
+               COUNT(DISTINCT COALESCE(r.entity_id, r.node_id)) AS all_count,
                0 AS my_count
         FROM review r
-        JOIN node_taxonomy nt ON nt.node_id = r.node_id
+        JOIN node_taxonomy nt ON nt.node_id = COALESCE(r.entity_id, r.node_id)
         JOIN taxonomy t ON t.id = nt.taxonomy_id
         GROUP BY t.label
         ORDER BY all_count DESC, t.label ASC
@@ -34,17 +34,17 @@ export function getTaxonomyNodeBadges(
       `
       WITH all_counts AS (
         SELECT t.label AS label,
-               COUNT(DISTINCT r.node_id) AS all_count
+               COUNT(DISTINCT COALESCE(r.entity_id, r.node_id)) AS all_count
         FROM review r
-        JOIN node_taxonomy nt ON nt.node_id = r.node_id
+        JOIN node_taxonomy nt ON nt.node_id = COALESCE(r.entity_id, r.node_id)
         JOIN taxonomy t ON t.id = nt.taxonomy_id
         GROUP BY t.label
       ),
       my_counts AS (
         SELECT t.label AS label,
-               COUNT(DISTINCT r.node_id) AS my_count
+               COUNT(DISTINCT COALESCE(r.entity_id, r.node_id)) AS my_count
         FROM review r
-        JOIN node_taxonomy nt ON nt.node_id = r.node_id
+        JOIN node_taxonomy nt ON nt.node_id = COALESCE(r.entity_id, r.node_id)
         JOIN taxonomy t ON t.id = nt.taxonomy_id
         WHERE r.user_id = ?
         GROUP BY t.label

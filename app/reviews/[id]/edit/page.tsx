@@ -12,7 +12,7 @@ type ReviewEditData = {
   user_id: number;
   content: string;
   entity_name: string;
-  node_id: number | null;
+  entity_id: number | null;
 };
 
 function getReviewForEdit(id: number): ReviewEditData | null {
@@ -22,6 +22,7 @@ function getReviewForEdit(id: number): ReviewEditData | null {
       `
       SELECT r.id, r.content, r.user_id,
              r.entity_name,
+             r.entity_id,
              r.node_id
       FROM review r
       WHERE r.id = ?
@@ -33,6 +34,7 @@ function getReviewForEdit(id: number): ReviewEditData | null {
         user_id: number;
         content: string;
         entity_name: string;
+        entity_id: number | null;
         node_id: number | null;
       }
     | undefined;
@@ -44,7 +46,7 @@ function getReviewForEdit(id: number): ReviewEditData | null {
     user_id: row.user_id,
     content: row.content,
     entity_name: row.entity_name,
-    node_id: row.node_id
+    entity_id: row.entity_id ?? row.node_id
   };
 }
 
@@ -104,7 +106,7 @@ export default function EditReviewPage({
         initialData={{
           content: review.content,
           entity_name: review.entity_name,
-          node_id: review.node_id
+          entity_id: review.entity_id
         }}
         returnQuery={detailSuffix}
       />

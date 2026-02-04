@@ -33,6 +33,7 @@ export async function GET(request: Request) {
     created_at: string;
     updated_at: string | null;
     entity_name: string;
+    entity_id: number | null;
     node_id: number | null;
     node_name: string | null;
   }> = [];
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
         SELECT 1
         FROM node_taxonomy nt
         JOIN taxonomy t ON t.id = nt.taxonomy_id
-        WHERE nt.node_id = r.node_id
+        WHERE nt.node_id = COALESCE(r.entity_id, r.node_id)
           AND t.label = ?
       )
       `
@@ -62,7 +63,7 @@ export async function GET(request: Request) {
     params.push(label);
   }
   if (nodeId !== null) {
-    whereClauses.push('r.node_id = ?');
+    whereClauses.push('COALESCE(r.entity_id, r.node_id) = ?');
     params.push(nodeId);
   }
   if (nodeNameTerms.length > 0) {
@@ -81,11 +82,12 @@ export async function GET(request: Request) {
       `
       SELECT r.id, u.user_id, r.content, r.created_at, r.updated_at,
              r.entity_name,
+             COALESCE(r.entity_id, r.node_id) AS entity_id,
              r.node_id,
              n.name AS node_name
       FROM review r
       JOIN user u ON u.id = r.user_id
-      LEFT JOIN nodes n ON n.id = r.node_id
+      LEFT JOIN nodes n ON n.id = COALESCE(r.entity_id, r.node_id)
       WHERE ${whereClause}
       ORDER BY r.created_at DESC, r.id DESC
       LIMIT ?
@@ -102,7 +104,10 @@ export async function GET(request: Request) {
     updated_at: string | null;
     preview: string;
     entity_name: string;
+    entity_id: number | null;
+    /** @deprecated legacy compatibility; prefer entity_id */
     node_id: number | null;
+    /** @deprecated legacy compatibility; prefer entity_name */
     node_name: string | null;
     sentiment?: 'positive' | 'negative';
   }> = pageRows.map((row) => ({
@@ -112,6 +117,7 @@ export async function GET(request: Request) {
     updated_at: row.updated_at,
     preview: previewText(row.content),
     entity_name: row.entity_name,
+    entity_id: row.entity_id,
     node_id: row.node_id,
     node_name: row.node_name
   }));

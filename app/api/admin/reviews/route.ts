@@ -7,6 +7,7 @@ export const runtime = 'nodejs';
 
 type ReviewRow = {
   id: number;
+  entity_id: number | null;
   node_id: number | null;
   node_name: string | null;
   entity_name: string;
@@ -39,7 +40,8 @@ export async function GET() {
     .prepare(
       `
       SELECT r.id,
-             r.node_id,
+             COALESCE(r.entity_id, r.node_id) AS entity_id,
+             COALESCE(r.entity_id, r.node_id) AS node_id,
              n.name AS node_name,
              r.entity_name,
              COALESCE(u.user_id, CAST(r.user_id AS TEXT)) AS user_id,
@@ -48,7 +50,7 @@ export async function GET() {
              r.updated_at
       FROM review r
       LEFT JOIN user u ON u.id = r.user_id
-      LEFT JOIN nodes n ON n.id = r.node_id
+      LEFT JOIN nodes n ON n.id = COALESCE(r.entity_id, r.node_id)
       ORDER BY COALESCE(r.updated_at, r.created_at) DESC
     `
     )
@@ -85,11 +87,11 @@ export async function PUT(request: Request) {
     .prepare(
       `
       UPDATE review
-      SET node_id = ?
+      SET node_id = ?, entity_id = ?
       WHERE id = ?
     `
     )
-    .run(payload.nodeId, payload.id);
+    .run(payload.nodeId, payload.nodeId, payload.id);
 
   if (!result.changes) {
     return NextResponse.json({ error: 'review not found' }, { status: 404 });

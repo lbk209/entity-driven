@@ -15,7 +15,7 @@ export default function NodeNameSearch({
   onCommit,
   onClear,
   forceClear = false,
-  placeholder = 'Type node name'
+  placeholder = 'Type entity name'
 }: NodeNameSearchProps) {
   const [draft, setDraft] = useState(value);
   const [isComposing, setIsComposing] = useState(false);
@@ -40,7 +40,7 @@ export default function NodeNameSearch({
       <div className="entity-input-wrap">
         <input
           id="node-search"
-          aria-label="Filter by node name"
+          aria-label="Filter by entity name"
           placeholder={placeholder}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

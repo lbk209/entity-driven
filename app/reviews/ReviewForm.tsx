@@ -12,7 +12,7 @@ type Entity = {
 type ReviewFormData = {
   content: string;
   entity_name: string;
-  node_id?: number | null;
+  entity_id?: number | null;
 };
 
 type ReviewFormProps = {
@@ -32,8 +32,8 @@ export default function ReviewForm({
   const [entities, setEntities] = useState<Entity[]>([]);
   const [reviewContent, setReviewContent] = useState(initialData?.content ?? '');
   const [entityName, setEntityName] = useState(initialData?.entity_name ?? '');
-  const [entityNodeId, setEntityNodeId] = useState<number | null>(
-    initialData?.node_id ?? null
+  const [entityId, setEntityId] = useState<number | null>(
+    initialData?.entity_id ?? null
   );
   const [showEntitySuggestions, setShowEntitySuggestions] = useState(false);
   const [submitMsg, setSubmitMsg] = useState('');
@@ -83,7 +83,7 @@ export default function ReviewForm({
     const payload = {
       content: reviewContent,
       entity_name: entityName,
-      node_id: entityNodeId
+      entity_id: entityId
     };
 
     const isEdit = mode === 'edit';
@@ -121,7 +121,7 @@ export default function ReviewForm({
               value={entityName}
               onChange={(event) => {
                 setEntityName(event.target.value);
-                setEntityNodeId(null);
+                setEntityId(null);
                 setShowEntitySuggestions(true);
               }}
               onFocus={() => setShowEntitySuggestions(true)}
@@ -145,7 +145,7 @@ export default function ReviewForm({
                     onMouseDown={(event) => {
                       event.preventDefault();
                       setEntityName(entity.name);
-                      setEntityNodeId(entity.id);
+                      setEntityId(entity.id);
                       setShowEntitySuggestions(false);
                     }}
                   >
