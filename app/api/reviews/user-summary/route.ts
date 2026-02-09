@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { normalizeNodeId, normalizeSpecificUserId } from '@/lib/reviewFilters';
+import { USER_TOP_ENTITIES_LIMIT, USER_TOP_ENTITY_SORT_MODE } from '@/lib/constants';
 
 export const runtime = 'nodejs';
 
@@ -47,18 +48,29 @@ export async function GET(request: Request) {
 
   const keyEntityRows = db
     .prepare(
-      `
-      SELECT COALESCE(n.name, r.entity_name, 'Unknown') AS entity_name,
-             COUNT(*) AS review_count
-      FROM review r
-      LEFT JOIN nodes n ON n.id = r.entity_id
-      WHERE r.user_id = ?
-      GROUP BY COALESCE(n.name, r.entity_name, 'Unknown')
-      ORDER BY review_count DESC, entity_name ASC
-      LIMIT 5
-      `
+      USER_TOP_ENTITY_SORT_MODE === 'most_recent'
+        ? `
+          SELECT COALESCE(n.name, r.entity_name, 'Unknown') AS entity_name,
+                 COUNT(*) AS review_count
+          FROM review r
+          LEFT JOIN nodes n ON n.id = r.entity_id
+          WHERE r.user_id = ?
+          GROUP BY COALESCE(n.name, r.entity_name, 'Unknown')
+          ORDER BY MAX(COALESCE(r.updated_at, r.created_at)) DESC, review_count DESC, entity_name ASC
+          LIMIT ?
+          `
+        : `
+          SELECT COALESCE(n.name, r.entity_name, 'Unknown') AS entity_name,
+                 COUNT(*) AS review_count
+          FROM review r
+          LEFT JOIN nodes n ON n.id = r.entity_id
+          WHERE r.user_id = ?
+          GROUP BY COALESCE(n.name, r.entity_name, 'Unknown')
+          ORDER BY review_count DESC, entity_name ASC
+          LIMIT ?
+          `
     )
-    .all(userRow.id) as Array<{ entity_name: string; review_count: number }>;
+    .all(userRow.id, USER_TOP_ENTITIES_LIMIT) as Array<{ entity_name: string; review_count: number }>;
 
   return NextResponse.json({
     user: {

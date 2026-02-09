@@ -85,9 +85,12 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Search/filter uses `review.entity_id` for entity filtering, plus taxonomy labels and user IDs. Review-content search is local (client-side) when an entity is selected.
 - Entity Reviews URL supports `entity_id` and `user_id` (no `user_name`); `user_id` deep links open the User Info Panel and filter the list.
 - Entity Reviews has two context panels: Entity Info and User Info. In `scope=my`, User Info is always shown first and non-closable; in `scope=all`, Entity Info renders first (if present) and User Info is closable.
+- User Info panel key entities are displayed as plain names (`A, B`) without the `Top entities:` prefix or inline count text.
 - Entity Reviews normalizes user context to a single `effectiveUserId`: `scope=my` uses session user and ignores URL `user_id`; otherwise URL `user_id` is used.
 - Entity Reviews review fetches are normalized client-side: `scope`/`user_id` are stripped from review query params and the effective user filter is sent via `x-review-user-id`.
 - Any scope transition (`all` ↔ `my`, including set/unset) clears `user_id` from the URL while preserving other params such as `entity_id`.
+- Verification status: backend user-summary flow matches intended design (`/api/reviews/user-summary` with required `user_id`, optional `entity_id`, and stable panel data independent of list pagination/order/search).
+- Open behavior note: user filter can be removed by scope transition (URL `user_id` is cleared), so removal is not exclusively via the User Info panel close action.
 - Entity Reviews entity filter UX: `entity_id=ID` deep links populate the entity selector when resolvable; clearing entity context removes only `entity_id`.
 - Top Entities row click navigates to Entity Reviews with `scope` and `entity_id` preserved in the URL.
 - Top Entities list includes per-node positive/negative keyword strings from `node_review_keywords` (versioned via `NODE_REVIEW_KEYWORD_VERSION`).

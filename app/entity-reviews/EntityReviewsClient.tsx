@@ -111,7 +111,6 @@ export default function EntityReviewsClient() {
   const scopeForData = !user && scopeParam === 'my' ? 'all' : effectiveScope;
   const isScopeMy = effectiveScope === 'my';
   const isEntityContextActive = entityId !== null;
-  const hasSpecificUserFilter = isScopeMy || Boolean(effectiveUserId);
   const showUserPanel = isScopeMy || Boolean(effectiveUserId);
   const reviewHeaders = useMemo(
     () => (effectiveUserId ? { 'x-review-user-id': effectiveUserId } : undefined),
@@ -246,14 +245,10 @@ export default function EntityReviewsClient() {
       lastSummaryKeyRef.current = '';
       return;
     }
-    const scopeValue = searchParams.get('scope') ?? '';
-    const key = `${entityInfo.id ?? ''}|${entityInfo.name}|${scopeValue}`;
+    const key = `${entityInfo.id ?? ''}|${entityInfo.name}`;
     if (lastSummaryKeyRef.current === key) return;
     lastSummaryKeyRef.current = key;
     const params = new URLSearchParams();
-    if (scopeValue) {
-      params.set('scope', scopeValue);
-    }
     if (entityInfo.id !== null) {
       params.set('entity_id', String(entityInfo.id));
     }
@@ -286,7 +281,7 @@ export default function EntityReviewsClient() {
       .catch(() => {
         setEntitySummary(null);
       });
-  }, [entityInfo, searchParams]);
+  }, [entityInfo]);
 
   useEffect(() => {
     let isActive = true;
@@ -511,20 +506,7 @@ export default function EntityReviewsClient() {
             />
           </div>
           <div className="filter-row">
-            {hasSpecificUserFilter ? (
-              <NodeNameSearch
-                value={effectiveUserId ?? ''}
-                inputValue={effectiveUserId ?? ''}
-                onInputValueChange={() => {}}
-                onCommit={() => {}}
-                onClear={() => {
-                  if (isScopeMy) return;
-                  updateQuery({ user_id: null });
-                }}
-                placeholder="Filtered by user"
-                readOnly
-              />
-            ) : isEntityContextActive ? (
+            {isEntityContextActive ? (
               <NodeNameSearch
                 value={reviewQuery}
                 inputValue={reviewSearchDraft}

@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   if (error) {
     return NextResponse.json({ error }, { status: 400 });
   }
-  const { label, reviewerUserId } = filters;
+  const { label, nodeId, reviewerUserId } = filters;
   const sortKeyRaw = searchParams.get('sort_key') || '';
   const sortKey =
     sortKeyRaw === 'name' || sortKeyRaw === 'bayes_score' || sortKeyRaw === 'review_count'
@@ -48,6 +48,7 @@ export async function GET(request: Request) {
 
   const db = getDb();
   const labelClause = label ? 'AND t.label = ?' : '';
+  const nodeClause = nodeId !== null ? 'AND nrs.node_id = ?' : '';
   const scopeClause = reviewerUserId !== null
     ? 'AND EXISTS (SELECT 1 FROM review r WHERE r.entity_id = nrs.node_id AND r.user_id = ?)'
     : '';
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
   const params = [
     keywordVersion,
     ...(label ? [label] : []),
+    ...(nodeId !== null ? [nodeId] : []),
     ...(reviewerUserId !== null ? [reviewerUserId] : [])
   ];
   const orderBy = (() => {
@@ -195,6 +197,7 @@ export async function GET(request: Request) {
       ${label ? 'JOIN taxonomy t ON t.id = nt.taxonomy_id' : ''}
       WHERE 1=1
       ${labelClause}
+      ${nodeClause}
       ${scopeClause}
       ${cursorClause.clause}
       GROUP BY nrs.node_id, n.name, nrs.review_count, nrs.bayes_score

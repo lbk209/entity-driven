@@ -31,8 +31,7 @@ export default function UserSummaryRow({
           <span className="badge badge--filter">{displayName}</span>{' '}
           {keyEntities && keyEntities.length > 0 ? (
             <span className="admin-cell-wrap admin-cell-wrap--muted">
-              Top entities:{' '}
-              {keyEntities.map((entity) => `${entity.name} (${entity.review_count})`).join(', ')}
+              {keyEntities.map((entity) => entity.name).join(', ')}
             </span>
           ) : (
             <span className="admin-cell-wrap admin-cell-wrap--muted">No key entities yet.</span>
