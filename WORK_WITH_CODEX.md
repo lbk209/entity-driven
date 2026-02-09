@@ -7,7 +7,7 @@ This file captures context so we can continue quickly next time.
 Minimal Next.js App Router app with SQLite for local testing. Features:
 - Create users
 - Submit and edit reviews linked to entities (inline creation supported)
-- Filter reviews by entity_id, taxonomy label, and user id (via scope or specific user filter); review content search is local when an entity is selected
+- Filter reviews by entity_id, taxonomy label, and user context (`scope`/`user_id` normalized to one effective user filter); review content search is local when an entity is selected
 - Review previews use full content; entity badges are inline and mobile clamps to two lines
 - Top Entities page at `/top-entities` with local, commit-based list search (name or keywords), taxonomy label filters, and sortable columns
 - Entity Reviews and Top Entities use cursor-based incremental loading with fixed page sizes and max caps
@@ -30,6 +30,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
   - `app/api/user/route.ts`
   - `app/api/review/route.ts`
   - `app/api/reviews/route.ts`
+  - `app/api/reviews/user-summary/route.ts`
   - `app/api/entities/route.ts`
   - `app/api/node-type/route.ts`
   - `app/api/taxonomy/route.ts`
@@ -39,6 +40,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
   - `app/api/edges/route.ts`
   - `app/api/node-review-stats/route.ts`
 - Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/page.tsx`, `app/reviews/[id]/edit/page.tsx`
+- Entity Reviews UI: `app/entity-reviews/EntityReviewsClient.tsx`, `app/components/UserSummaryRow.tsx`
 - Top Entities UI: `app/top-entities/page.tsx`
 - Legacy redirect: `app/node-review-stats/page.tsx`
 - Shared review form: `app/reviews/ReviewForm.tsx`
@@ -48,6 +50,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 ## API (Cursor Pagination)
 
 - Entity Reviews: `GET /api/reviews` supports `cursor_created_at` + `cursor_review_id`; response includes `nextCursor` with `{ created_at, review_id }`.
+- User summary panel: `GET /api/reviews/user-summary` supports `user_id` and optional `entity_id` for per-user panel stats.
 - Top Entities: `GET /api/node-review-stats` supports `cursor_score`, `cursor_count`, `cursor_node_id`, plus `cursor_name` when sorting by name; response includes `nextCursor` with `{ score, count, node_id, name }` and keyword fields (`pos_keywords`, `neg_keywords`).
 
 ## Local Run
@@ -80,9 +83,12 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Review details show the entity badge before content with an edit action.
 - Reviews store `entity_name` directly with optional `entity_id` (resolved vs unresolved reviews).
 - Search/filter uses `review.entity_id` for entity filtering, plus taxonomy labels and user IDs. Review-content search is local (client-side) when an entity is selected.
-- Entity Reviews API accepts `entity_id`, `label`, and a specific user filter via `x-review-user-id` header.
-- Entity Reviews entity filter UX: `entity_id=ID` deep links populate the entity selector when resolvable; clear removes `entity_id` plus any specific user filter.
-- Entity Reviews user filter UX: clicking a user name filters reviews to that user while scope remains `all`; the search clear button clears the user filter.
+- Entity Reviews URL supports `entity_id` and `user_id` (no `user_name`); `user_id` deep links open the User Info Panel and filter the list.
+- Entity Reviews has two context panels: Entity Info and User Info. In `scope=my`, User Info is always shown first and non-closable; in `scope=all`, Entity Info renders first (if present) and User Info is closable.
+- Entity Reviews normalizes user context to a single `effectiveUserId`: `scope=my` uses session user and ignores URL `user_id`; otherwise URL `user_id` is used.
+- Entity Reviews review fetches are normalized client-side: `scope`/`user_id` are stripped from review query params and the effective user filter is sent via `x-review-user-id`.
+- Any scope transition (`all` ↔ `my`, including set/unset) clears `user_id` from the URL while preserving other params such as `entity_id`.
+- Entity Reviews entity filter UX: `entity_id=ID` deep links populate the entity selector when resolvable; clearing entity context removes only `entity_id`.
 - Top Entities row click navigates to Entity Reviews with `scope` and `entity_id` preserved in the URL.
 - Top Entities list includes per-node positive/negative keyword strings from `node_review_keywords` (versioned via `NODE_REVIEW_KEYWORD_VERSION`).
 - Badge semantics are intentionally split:
@@ -98,7 +104,7 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Admin Reference tab uses radio buttons to switch between edge relations, node types, and taxonomy views; relation list wraps parent/child types and vertically centers row text; relation edit row supports multi-select type pickers and shows the relation description in a compact textarea below the form row.
 - Entity Reviews filter: node search uses a custom suggestion dropdown with max-height styling; suggestions show on focus and filter as you type; label badges and user-id filtering are supported.
 - Pagination limits live in `lib/constants.ts` as `ENTITY_REVIEWS_PAGE_SIZE`, `ENTITY_REVIEWS_MAX_ITEMS`, `NODE_REVIEW_STATS_PAGE_SIZE`, and `NODE_REVIEW_STATS_MAX_ITEMS`.
-- Filter semantics are centralized in `interpretReviewFilters` (`lib/reviewFilters.ts`): scope `my` is mutually exclusive with a specific user (default policy ignores the specific user when `scope=my`), while `scope=all` may be combined with a specific user; SQL consumes only the interpreted filter object.
+- Filter semantics are centralized in `lib/reviewFilters.ts` and consumed by APIs/UI: URL parsing includes `user_id`, and Entity Reviews derives an `effectiveUserId` to avoid duplicate `scope=my` + `user_id=<me>` meaning in downstream filtering/panels.
 
 ## Schema
 

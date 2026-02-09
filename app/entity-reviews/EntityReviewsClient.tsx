@@ -7,7 +7,8 @@ import LabelBadgeRow, { buildLabelBadges } from '../components/LabelBadgeRow';
 import AuthButton from '../components/AuthButton';
 import NodeNameSearch from '../components/NodeNameSearch';
 import EntitySummaryRow from '../components/EntitySummaryRow';
-import { parseReviewFilters } from '@/lib/reviewFilters';
+import UserSummaryRow from '../components/UserSummaryRow';
+import { deriveEffectiveUserId, parseReviewFilters } from '@/lib/reviewFilters';
 import { useSession } from '../components/useSession';
 import ScopeToggle from '../components/ScopeToggle';
 import { ENTITY_REVIEW_LABEL_LIMIT, ENTITY_REVIEWS_MAX_ITEMS } from '@/lib/constants';
@@ -45,7 +46,6 @@ export default function EntityReviewsClient() {
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const isFetchingRef = useRef(false);
-  const navigationRef = useRef(false);
   const [entitySummary, setEntitySummary] = useState<{
     reviewCount: number | null;
     score: number | null;
@@ -54,11 +54,19 @@ export default function EntityReviewsClient() {
   } | null>(null);
   const lastSummaryKeyRef = useRef<string>('');
   const [entityMap, setEntityMap] = useState<Map<number, string>>(new Map());
+  const [userSummary, setUserSummary] = useState<{
+    displayName: string;
+    reviewCount: number | null;
+    entityReviewCount: number | null;
+    keyEntities: Array<{ name: string; review_count: number }>;
+  } | null>(null);
+  const [userSummaryError, setUserSummaryError] = useState('');
 
   const {
     scope: scopeParam,
     label: effectiveLabel,
-    nodeId: entityId
+    nodeId: entityId,
+    specificUserId: urlUserId
   } = useMemo(
     () => parseReviewFilters(searchParams),
     [searchParams]
@@ -66,7 +74,6 @@ export default function EntityReviewsClient() {
   const effectiveScope = scopeParam ?? 'all';
 
   const [resolvedEntityName, setResolvedEntityName] = useState('');
-  const [specificUserId, setSpecificUserId] = useState<string | null>(null);
   const [reviewQuery, setReviewQuery] = useState('');
   const [entitySearchDraft, setEntitySearchDraft] = useState('');
   const [reviewSearchDraft, setReviewSearchDraft] = useState('');
@@ -78,16 +85,38 @@ export default function EntityReviewsClient() {
   const queryString = useMemo(() => {
     return searchParamString ? `?${searchParamString}` : '';
   }, [searchParamString]);
+  const reviewsQueryString = useMemo(() => {
+    const params = new URLSearchParams(searchParamString);
+    params.delete('scope');
+    params.delete('user_id');
+    const serialized = params.toString();
+    return serialized ? `?${serialized}` : '';
+  }, [searchParamString]);
 
   const entitySearchValue = useMemo(() => {
     if (entityId !== null) return resolvedEntityName;
     return '';
   }, [entityId, resolvedEntityName]);
 
-  const hasSpecificUserFilter = Boolean(specificUserId);
+  const effectiveUserId = useMemo(
+    () =>
+      deriveEffectiveUserId({
+        scope: effectiveScope,
+        specificUserId: urlUserId,
+        sessionUserId: user?.user_id
+      }),
+    [effectiveScope, urlUserId, user?.user_id]
+  );
 
   const scopeForData = !user && scopeParam === 'my' ? 'all' : effectiveScope;
+  const isScopeMy = effectiveScope === 'my';
   const isEntityContextActive = entityId !== null;
+  const hasSpecificUserFilter = isScopeMy || Boolean(effectiveUserId);
+  const showUserPanel = isScopeMy || Boolean(effectiveUserId);
+  const reviewHeaders = useMemo(
+    () => (effectiveUserId ? { 'x-review-user-id': effectiveUserId } : undefined),
+    [effectiveUserId]
+  );
 
   useEffect(() => {
     setReviewQuery('');
@@ -98,15 +127,6 @@ export default function EntityReviewsClient() {
     if (isEntityContextActive) return;
     setEntitySearchDraft(entitySearchValue);
   }, [entitySearchValue, isEntityContextActive]);
-
-  useEffect(() => {
-    if (!searchParams.get('user_id')) return;
-    const params = new URLSearchParams(searchParamString);
-    params.delete('user_id');
-    const query = params.toString();
-    navigationRef.current = true;
-    router.replace(query ? `${pathname}?${query}` : pathname);
-  }, [pathname, router, searchParamString, searchParams]);
 
   const topEntitiesHref = useMemo(() => {
     const scopeValue = searchParams.get('scope');
@@ -126,8 +146,8 @@ export default function EntityReviewsClient() {
       setCursor(null);
       setHasMore(true);
       try {
-        const res = await fetch(`/api/reviews${queryString}`, {
-          headers: specificUserId ? { 'x-review-user-id': specificUserId } : undefined
+        const res = await fetch(`/api/reviews${reviewsQueryString}`, {
+          headers: reviewHeaders
         });
         const data = await res.json();
         if (!isActive) return;
@@ -149,7 +169,7 @@ export default function EntityReviewsClient() {
     return () => {
       isActive = false;
     };
-  }, [queryString, specificUserId, user]);
+  }, [reviewsQueryString, reviewHeaders, user]);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -167,11 +187,11 @@ export default function EntityReviewsClient() {
       if (!hasMore || !cursor) return;
       isFetchingRef.current = true;
       setIsLoadingMore(true);
-      const params = new URLSearchParams(queryString.replace(/^\?/, ''));
+      const params = new URLSearchParams(reviewsQueryString.replace(/^\?/, ''));
       params.set('cursor_created_at', cursor.created_at);
       params.set('cursor_review_id', String(cursor.review_id));
       fetch(`/api/reviews?${params.toString()}`, {
-        headers: specificUserId ? { 'x-review-user-id': specificUserId } : undefined
+        headers: reviewHeaders
       })
         .then((res) => res.json())
         .then((data) => {
@@ -196,7 +216,7 @@ export default function EntityReviewsClient() {
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [cursor, queryString, hasMore, isLoading, isLoadingMore, reviews.length, specificUserId]);
+  }, [cursor, hasMore, isLoading, isLoadingMore, reviewHeaders, reviews.length, reviewsQueryString]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -268,13 +288,70 @@ export default function EntityReviewsClient() {
       });
   }, [entityInfo, searchParams]);
 
+  useEffect(() => {
+    let isActive = true;
+    if (!effectiveUserId) {
+      setUserSummary(null);
+      setUserSummaryError(isScopeMy ? 'Sign in to view your user summary.' : '');
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('user_id', effectiveUserId);
+    if (entityId !== null) {
+      params.set('entity_id', String(entityId));
+    }
+    fetch(`/api/reviews/user-summary?${params.toString()}`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error('Failed to load user summary');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (!isActive) return;
+        const nextUser = data?.user as
+          | {
+              user_id: string;
+              display_name: string;
+              review_count: number;
+              entity_review_count: number | null;
+              key_entities: Array<{ name: string; review_count: number }>;
+            }
+          | undefined;
+        if (!nextUser) {
+          setUserSummary(null);
+          setUserSummaryError('No user summary available.');
+          return;
+        }
+        setUserSummary({
+          displayName: nextUser.display_name,
+          reviewCount: nextUser.review_count,
+          entityReviewCount: nextUser.entity_review_count,
+          keyEntities: nextUser.key_entities ?? []
+        });
+        setUserSummaryError('');
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setUserSummary(null);
+        setUserSummaryError('Failed to load user summary.');
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [effectiveUserId, entityId, isScopeMy]);
+
 
   function updateQuery(next: {
     scope?: string | null;
     label?: string | null;
     entity_id?: string | null;
+    user_id?: string | null;
   }) {
     const params = new URLSearchParams(searchParams.toString());
+    const currentScope = searchParams.get('scope') ?? null;
+    const nextScopeValue = next.scope === undefined ? currentScope : next.scope;
+    const isScopeChange = next.scope !== undefined && nextScopeValue !== currentScope;
     if (next.scope) {
       params.set('scope', next.scope);
     } else if (next.scope === null) {
@@ -290,18 +367,16 @@ export default function EntityReviewsClient() {
     } else if (next.entity_id !== undefined) {
       params.delete('entity_id');
     }
+    if (isScopeChange) {
+      params.delete('user_id');
+    } else if (next.user_id) {
+      params.set('user_id', next.user_id);
+    } else if (next.user_id !== undefined) {
+      params.delete('user_id');
+    }
     const query = params.toString();
-    navigationRef.current = true;
     router.push(query ? `${pathname}?${query}` : pathname);
   }
-
-  useEffect(() => {
-    if (navigationRef.current) {
-      navigationRef.current = false;
-      return;
-    }
-    setSpecificUserId(null);
-  }, [searchParams]);
 
   useEffect(() => {
     let isActive = true;
@@ -426,7 +501,6 @@ export default function EntityReviewsClient() {
               value={user ? effectiveScope : 'all'}
               disabled={!user}
               onChange={(scope) => {
-                setSpecificUserId(null);
                 updateQuery({ scope, label: effectiveLabel });
               }}
             />
@@ -437,7 +511,20 @@ export default function EntityReviewsClient() {
             />
           </div>
           <div className="filter-row">
-            {isEntityContextActive ? (
+            {hasSpecificUserFilter ? (
+              <NodeNameSearch
+                value={effectiveUserId ?? ''}
+                inputValue={effectiveUserId ?? ''}
+                onInputValueChange={() => {}}
+                onCommit={() => {}}
+                onClear={() => {
+                  if (isScopeMy) return;
+                  updateQuery({ user_id: null });
+                }}
+                placeholder="Filtered by user"
+                readOnly
+              />
+            ) : isEntityContextActive ? (
               <NodeNameSearch
                 value={reviewQuery}
                 inputValue={reviewSearchDraft}
@@ -457,19 +544,30 @@ export default function EntityReviewsClient() {
                 onInputValueChange={setEntitySearchDraft}
                 onCommit={commitEntitySelection}
                 onClear={() => {
-                  setSpecificUserId(null);
                   clearEntitySelection();
                 }}
-                forceClear={hasSpecificUserFilter}
-                placeholder={
-                  hasSpecificUserFilter
-                    ? 'Filtered by user'
-                    : 'Type entity name'
-                }
+                placeholder="Type entity name"
               />
             )}
           </div>
         </section>
+        {isScopeMy && showUserPanel && (
+          <section className="section">
+            <div className="entity-summary-panel">
+              {userSummary ? (
+                <UserSummaryRow
+                  displayName={userSummary.displayName}
+                  reviewCount={userSummary.reviewCount}
+                  entityReviewCount={userSummary.entityReviewCount}
+                  keyEntities={userSummary.keyEntities}
+                  entityContextName={entityInfo?.name ?? null}
+                />
+              ) : (
+                <small>{userSummaryError || 'Loading user summary...'}</small>
+              )}
+            </div>
+          </section>
+        )}
         {entityInfo && (
           <section className="section">
             <div className="entity-summary-panel">
@@ -490,6 +588,33 @@ export default function EntityReviewsClient() {
                 reviewCount={entitySummary?.reviewCount ?? null}
                 score={entitySummary?.score ?? null}
               />
+            </div>
+          </section>
+        )}
+        {!isScopeMy && showUserPanel && (
+          <section className="section">
+            <div className="entity-summary-panel">
+              <button
+                type="button"
+                className="entity-summary-close"
+                aria-label="Close user summary"
+                onClick={() => {
+                  updateQuery({ user_id: null });
+                }}
+              >
+                ×
+              </button>
+              {userSummary ? (
+                <UserSummaryRow
+                  displayName={userSummary.displayName}
+                  reviewCount={userSummary.reviewCount}
+                  entityReviewCount={userSummary.entityReviewCount}
+                  keyEntities={userSummary.keyEntities}
+                  entityContextName={entityInfo?.name ?? null}
+                />
+              ) : (
+                <small>{userSummaryError || 'Loading user summary...'}</small>
+              )}
             </div>
           </section>
         )}
@@ -555,7 +680,7 @@ export default function EntityReviewsClient() {
                     <button
                       type="button"
                       className="review-user"
-                      onClick={() => setSpecificUserId(review.user_id)}
+                      onClick={() => updateQuery({ user_id: review.user_id })}
                     >
                       {review.user_id}
                     </button>{' '}

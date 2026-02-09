@@ -15,6 +15,7 @@ type BaseProps = {
   onClear: () => void;
   forceClear?: boolean;
   placeholder?: string;
+  readOnly?: boolean;
 };
 
 type FreeformProps = BaseProps & {
@@ -36,7 +37,8 @@ export default function NodeNameSearch(props: NodeNameSearchProps) {
     onInputValueChange,
     onClear,
     forceClear = false,
-    placeholder = 'Type entity name'
+    placeholder = 'Type entity name',
+    readOnly = false
   } = props;
   const [draft, setDraft] = useState(value);
   const [isComposing, setIsComposing] = useState(false);
@@ -140,6 +142,7 @@ export default function NodeNameSearch(props: NodeNameSearchProps) {
           placeholder={placeholder}
           value={draftValue}
           onChange={(event) => {
+            if (readOnly) return;
             const nextValue = event.target.value;
             if (isControlled) {
               onInputValueChange?.(nextValue);
@@ -183,6 +186,7 @@ export default function NodeNameSearch(props: NodeNameSearchProps) {
           }}
           onCompositionStart={() => setIsComposing(true)}
           onCompositionEnd={() => setIsComposing(false)}
+          readOnly={readOnly}
           autoComplete="off"
           role={isEntityMode ? 'combobox' : undefined}
           aria-autocomplete={isEntityMode ? 'list' : undefined}

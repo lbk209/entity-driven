@@ -7,6 +7,10 @@ export type ReviewFilterParams = {
    * Canonical entity id derived from entity_* params.
    */
   nodeId: number | null;
+  /**
+   * Canonical specific user id derived from URL params.
+   */
+  specificUserId: string | null;
 };
 
 export type ReviewFilterConflictPolicy =
@@ -58,7 +62,19 @@ export function parseReviewFilters(
   const scope = normalizeScope(searchParams.get('scope'));
   const label = normalizeLabel(searchParams.get('label'));
   const nodeId = normalizeNodeId(searchParams.get('entity_id') ?? searchParams.get('entity'));
-  return { scope, label, nodeId };
+  const specificUserId = normalizeSpecificUserId(searchParams.get('user_id'));
+  return { scope, label, nodeId, specificUserId };
+}
+
+export function deriveEffectiveUserId(params: {
+  scope: ReviewScope | null;
+  specificUserId: string | null;
+  sessionUserId: string | null | undefined;
+}) {
+  if (params.scope === 'my') {
+    return normalizeSpecificUserId(params.sessionUserId ?? null);
+  }
+  return normalizeSpecificUserId(params.specificUserId);
 }
 
 export function interpretReviewFilters(params: {
@@ -70,7 +86,7 @@ export function interpretReviewFilters(params: {
   const base = parseReviewFilters(params.searchParams);
   const policy = params.policy ?? 'ignore_user_when_scope';
   let scope = base.scope;
-  let specificUserId = normalizeSpecificUserId(params.headerUserId);
+  let specificUserId = base.specificUserId ?? normalizeSpecificUserId(params.headerUserId);
   let error: string | undefined;
 
   if (scope === 'my' && specificUserId) {

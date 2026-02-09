@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb, previewText } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
-import { interpretReviewFilters } from '@/lib/reviewFilters';
+import { interpretReviewFilters, normalizeSpecificUserId } from '@/lib/reviewFilters';
 import { ENTITY_REVIEW_LABEL_LIMIT, ENTITY_REVIEWS_PAGE_SIZE } from '@/lib/constants';
 import { getTaxonomyReviewBadges } from '@/lib/reviewBadges';
 
@@ -10,10 +10,12 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const sessionUser = getSessionUser();
   const { searchParams } = new URL(request.url);
+  const hasUrlSpecificUser = Boolean(normalizeSpecificUserId(searchParams.get('user_id')));
   const { filters, error } = interpretReviewFilters({
     searchParams,
     headerUserId: request.headers.get('x-review-user-id'),
-    sessionUserId: sessionUser?.id ?? null
+    sessionUserId: sessionUser?.id ?? null,
+    policy: hasUrlSpecificUser ? 'ignore_scope_when_user' : undefined
   });
   if (error) {
     return NextResponse.json({ error }, { status: 400 });
