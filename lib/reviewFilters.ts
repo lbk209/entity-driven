@@ -7,11 +7,6 @@ export type ReviewFilterParams = {
    * Canonical entity id derived from entity_* params.
    */
   nodeId: number | null;
-  /**
-   * Canonical entity name derived from entity_* params.
-   */
-  nodeName: string;
-  nodeNameTerms: string[];
 };
 
 export type ReviewFilterConflictPolicy =
@@ -44,11 +39,6 @@ export function normalizeLabel(labelParam: string | null) {
   return trimmed;
 }
 
-export function normalizeNodeName(nodeNameParam: string | null) {
-  if (!nodeNameParam) return '';
-  return nodeNameParam.trim();
-}
-
 export function normalizeNodeId(nodeIdParam: string | null) {
   if (!nodeIdParam) return null;
   const value = Number(nodeIdParam);
@@ -62,24 +52,13 @@ export function normalizeSpecificUserId(headerUserId: string | null | undefined)
   return trimmed ? trimmed : null;
 }
 
-export function buildNodeNameTerms(nodeName: string) {
-  if (!nodeName) return [];
-  return nodeName
-    .toLowerCase()
-    .split(/\s+/)
-    .map((term) => term.trim())
-    .filter(Boolean);
-}
-
 export function parseReviewFilters(
   searchParams: { get: (key: string) => string | null }
 ): ReviewFilterParams {
   const scope = normalizeScope(searchParams.get('scope'));
   const label = normalizeLabel(searchParams.get('label'));
   const nodeId = normalizeNodeId(searchParams.get('entity_id') ?? searchParams.get('entity'));
-  const nodeName = normalizeNodeName(searchParams.get('entity_name'));
-  const nodeNameTerms = buildNodeNameTerms(nodeName);
-  return { scope, label, nodeId, nodeName, nodeNameTerms };
+  return { scope, label, nodeId };
 }
 
 export function interpretReviewFilters(params: {

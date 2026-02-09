@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   if (error) {
     return NextResponse.json({ error }, { status: 400 });
   }
-  const { label, nodeId, nodeNameTerms, reviewerUserId, specificUserId } = filters;
+  const { label, nodeId, reviewerUserId, specificUserId } = filters;
   const cursorCreatedAt = searchParams.get('cursor_created_at');
   const cursorReviewIdRaw = searchParams.get('cursor_review_id');
   const cursorReviewId = cursorReviewIdRaw ? Number(cursorReviewIdRaw) : NaN;
@@ -63,11 +63,6 @@ export async function GET(request: Request) {
   if (nodeId !== null) {
     whereClauses.push('r.entity_id = ?');
     params.push(nodeId);
-  }
-  if (nodeNameTerms.length > 0) {
-    // Name search is text-based and includes unresolved reviews (entity_id IS NULL).
-    whereClauses.push(nodeNameTerms.map(() => 'LOWER(r.entity_name) LIKE ?').join(' AND '));
-    params.push(...nodeNameTerms.map((term) => `%${term}%`));
   }
   if (cursorCreatedAt && Number.isFinite(cursorReviewId)) {
     whereClauses.push('(r.created_at < ? OR (r.created_at = ? AND r.id < ?))');

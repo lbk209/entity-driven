@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import LabelBadgeRow from '../components/LabelBadgeRow';
 import AuthButton from '../components/AuthButton';
 import NodeNameSearch from '../components/NodeNameSearch';
+import EntitySummaryRow from '../components/EntitySummaryRow';
 import { useSession } from '../components/useSession';
 import { parseReviewFilters } from '@/lib/reviewFilters';
 import ScopeToggle from '../components/ScopeToggle';
@@ -44,12 +45,7 @@ function sortIndicator<T extends string>(current: SortState<T>, key: T) {
   return current.direction === 'asc' ? 'asc' : 'desc';
 }
 
-function formatScore(value: number) {
-  if (!Number.isFinite(value)) return '-';
-  return value.toFixed(3);
-}
-
-export default function NodeReviewStatsClient() {
+export default function TopEntitiesClient() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -75,7 +71,7 @@ export default function NodeReviewStatsClient() {
   const sortKeyParam = searchParams.get('sort_key');
   const sortDirParam = searchParams.get('sort_dir');
 
-  const { scope: scopeParam, label: effectiveLabel, nodeName: entityNameParam } = useMemo(
+  const { scope: scopeParam, label: effectiveLabel } = useMemo(
     () => parseReviewFilters(searchParams),
     [searchParams]
   );
@@ -210,11 +206,9 @@ export default function NodeReviewStatsClient() {
   function updateQuery(next: {
     scope?: string | null;
     label?: string | null;
-    entity_name?: string | null;
     sort_key?: string | null;
     sort_dir?: string | null;
   }) {
-    // Prefer entity_name query param.
     const params = new URLSearchParams(searchParams.toString());
     if (next.scope) {
       params.set('scope', next.scope);
@@ -225,11 +219,6 @@ export default function NodeReviewStatsClient() {
       params.set('label', next.label);
     } else if (next.label !== undefined) {
       params.delete('label');
-    }
-    if (next.entity_name) {
-      params.set('entity_name', next.entity_name);
-    } else if (next.entity_name !== undefined) {
-      params.delete('entity_name');
     }
     if (next.sort_key) {
       params.set('sort_key', next.sort_key);
@@ -253,6 +242,21 @@ export default function NodeReviewStatsClient() {
       })),
     [effectiveScope, labels]
   );
+
+  const [searchDraft, setSearchDraft] = useState('');
+  const [searchCommitted, setSearchCommitted] = useState('');
+
+  const filteredStats = useMemo(() => {
+    const query = searchCommitted.trim().toLowerCase();
+    if (!query) return stats;
+    return stats.filter((row) => {
+      const name = row.node_name?.toLowerCase() ?? '';
+      if (name.includes(query)) return true;
+      const posKeywords = row.pos_keywords?.toLowerCase() ?? '';
+      const negKeywords = row.neg_keywords?.toLowerCase() ?? '';
+      return posKeywords.includes(query) || negKeywords.includes(query);
+    });
+  }, [searchCommitted, stats]);
 
   return (
     <>
@@ -289,13 +293,14 @@ export default function NodeReviewStatsClient() {
           </div>
           <div className="filter-row">
             <NodeNameSearch
-              value={entityNameParam}
-              onCommit={(value) =>
-                updateQuery({
-                  entity_name: value.trim() ? value : null
-                })
-              }
-              onClear={() => updateQuery({ entity_name: null })}
+              value={searchCommitted}
+              inputValue={searchDraft}
+              onInputValueChange={setSearchDraft}
+              onCommit={(value) => setSearchCommitted(value)}
+              onClear={() => {
+                setSearchDraft('');
+                setSearchCommitted('');
+              }}
             />
           </div>
         </section>
@@ -310,97 +315,46 @@ export default function NodeReviewStatsClient() {
           {error && <div className="admin-row">{error}</div>}
           {!isLoading && !error && (
             <>
-              <div className="row review-footer admin-row admin-row--header admin-row--data admin-row--data-node-review-stats">
-                <div>
-                    <button
-                      type="button"
-                      className="admin-sort"
-                      onClick={() => {
-                        const next = nextSort(sort, 'name');
-                        updateQuery({ sort_key: next.key, sort_dir: next.direction });
-                      }}
-                    >
-                    Entity
-                    <span className="admin-sort__indicator">
-                      {sortIndicator(sort, 'name')}
-                    </span>
-                  </button>
-                </div>
-                <div>
-                    <button
-                      type="button"
-                      className="admin-sort"
-                      onClick={() => {
-                        const next = nextSort(sort, 'review_count');
-                        updateQuery({ sort_key: next.key, sort_dir: next.direction });
-                      }}
-                    >
-                    Review Count
-                    <span className="admin-sort__indicator">
-                      {sortIndicator(sort, 'review_count')}
-                    </span>
-                  </button>
-                </div>
-                <div>
-                    <button
-                      type="button"
-                      className="admin-sort"
-                      onClick={() => {
-                        const next = nextSort(sort, 'bayes_score');
-                        updateQuery({ sort_key: next.key, sort_dir: next.direction });
-                      }}
-                    >
-                    Bayes Score
-                    <span className="admin-sort__indicator">
-                      {sortIndicator(sort, 'bayes_score')}
-                    </span>
-                  </button>
-                </div>
-                <div>Positive keywords</div>
-                <div>Negative keywords</div>
-              </div>
-              {stats.map((row) => (
-                <div
-                  className="row review-footer admin-row admin-row--data admin-row--data-node-review-stats admin-row--clickable"
-                  key={row.node_id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
-                    const params = new URLSearchParams();
-                    const scopeValue = searchParams.get('scope');
-                    if (scopeValue) {
-                      params.set('scope', scopeValue);
-                    }
-                    params.set('entity_id', String(row.node_id));
-                    const query = params.toString();
-                    router.push(query ? `/entity-reviews?${query}` : '/entity-reviews');
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') return;
-                    event.preventDefault();
-                    const params = new URLSearchParams();
-                    const scopeValue = searchParams.get('scope');
-                    if (scopeValue) {
-                      params.set('scope', scopeValue);
-                    }
-                    params.set('entity_id', String(row.node_id));
-                    const query = params.toString();
-                    router.push(query ? `/entity-reviews?${query}` : '/entity-reviews');
-                  }}
-                >
-                  <div className="admin-cell-wrap">
-                    {row.node_name ?? `Entity ${row.node_id}`}
-                  </div>
-                  <div className="admin-cell-wrap">{row.review_count}</div>
-                  <div className="admin-cell-wrap">{formatScore(row.bayes_score)}</div>
-                  <div className="admin-cell-wrap admin-cell-wrap--muted">
-                    {row.pos_keywords ?? ''}
-                  </div>
-                  <div className="admin-cell-wrap admin-cell-wrap--muted">
-                    {row.neg_keywords ?? ''}
-                  </div>
-                </div>
-              ))}
+              <ul className="list list--snap">
+                {filteredStats.map((row) => (
+                  <li
+                    key={row.node_id}
+                    className="admin-row--clickable"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      const scopeValue = searchParams.get('scope');
+                      if (scopeValue) {
+                        params.set('scope', scopeValue);
+                      }
+                      params.set('entity_id', String(row.node_id));
+                      const query = params.toString();
+                      router.push(query ? `/entity-reviews?${query}` : '/entity-reviews');
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      const params = new URLSearchParams();
+                      const scopeValue = searchParams.get('scope');
+                      if (scopeValue) {
+                        params.set('scope', scopeValue);
+                      }
+                      params.set('entity_id', String(row.node_id));
+                      const query = params.toString();
+                      router.push(query ? `/entity-reviews?${query}` : '/entity-reviews');
+                    }}
+                  >
+                    <EntitySummaryRow
+                      name={row.node_name ?? `Entity ${row.node_id}`}
+                      posKeywords={row.pos_keywords}
+                      negKeywords={row.neg_keywords}
+                      reviewCount={row.review_count}
+                      score={row.bayes_score}
+                    />
+                  </li>
+                ))}
+              </ul>
               <div ref={loadMoreRef} />
               {isLoadingMore && <div className="admin-row">Loading more...</div>}
             </>

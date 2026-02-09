@@ -7,9 +7,9 @@ This file captures context so we can continue quickly next time.
 Minimal Next.js App Router app with SQLite for local testing. Features:
 - Create users
 - Submit and edit reviews linked to entities (inline creation supported)
-- Filter reviews by entity name/id, taxonomy label, and user id (via scope or specific user filter)
+- Filter reviews by entity_id, taxonomy label, and user id (via scope or specific user filter); review content search is local when an entity is selected
 - Review previews use full content; entity badges are inline and mobile clamps to two lines
-- Top Entities page at `/top-entities` with server-side entity-name search, taxonomy label filters, and sortable columns
+- Top Entities page at `/top-entities` with local, commit-based list search (name or keywords), taxonomy label filters, and sortable columns
 - Entity Reviews and Top Entities use cursor-based incremental loading with fixed page sizes and max caps
 
 ## Stack
@@ -76,13 +76,13 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Entity Reviews list is cursor-paginated and sorted by `created_at DESC, id DESC` with `(created_at, review_id)` cursor.
 - Top Entities list is cursor-paginated with `(score, count, node_id)` cursor; sorting is frozen during scrolling and resets on sort/filter changes.
 - Review list shows real user IDs, entity badges, and uses a snap-scrolling list without a section header.
-- Entity picker uses autocomplete suggestions and stores the exact user-entered name.
+- Entity picker uses autocomplete suggestions and commits by entity_id only.
 - Review details show the entity badge before content with an edit action.
 - Reviews store `entity_name` directly with optional `entity_id` (resolved vs unresolved reviews).
-- Search/filter uses `review.entity_name` for text search and `review.entity_id` for resolved-only entity filtering, plus taxonomy labels and user IDs.
-- Entity Reviews API accepts `entity` (id), `entity_id`, `entity_name`, `label`, and a specific user filter via `x-review-user-id` header.
-- Entity Reviews entity filter UX: `entity_id=ID` deep links populate the entity name search box when resolvable; clear removes `entity`, `entity_id`, and `entity_name` plus any specific user filter.
-- Entity Reviews user filter UX: clicking a user name filters reviews to that user while scope remains `all`; the search clear button clears the user filter and entity-name search, and the placeholder changes to “Click Clear first” while active.
+- Search/filter uses `review.entity_id` for entity filtering, plus taxonomy labels and user IDs. Review-content search is local (client-side) when an entity is selected.
+- Entity Reviews API accepts `entity_id`, `label`, and a specific user filter via `x-review-user-id` header.
+- Entity Reviews entity filter UX: `entity_id=ID` deep links populate the entity selector when resolvable; clear removes `entity_id` plus any specific user filter.
+- Entity Reviews user filter UX: clicking a user name filters reviews to that user while scope remains `all`; the search clear button clears the user filter.
 - Top Entities row click navigates to Entity Reviews with `scope` and `entity_id` preserved in the URL.
 - Top Entities list includes per-node positive/negative keyword strings from `node_review_keywords` (versioned via `NODE_REVIEW_KEYWORD_VERSION`).
 - Badge semantics are intentionally split:

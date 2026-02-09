@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import LabelBadgeRow, { buildLabelBadges } from '../components/LabelBadgeRow';
 import AuthButton from '../components/AuthButton';
 import NodeNameSearch from '../components/NodeNameSearch';
+import EntitySummaryRow from '../components/EntitySummaryRow';
 import { parseReviewFilters } from '@/lib/reviewFilters';
 import { useSession } from '../components/useSession';
 import ScopeToggle from '../components/ScopeToggle';
@@ -45,12 +46,19 @@ export default function EntityReviewsClient() {
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const isFetchingRef = useRef(false);
   const navigationRef = useRef(false);
+  const [entitySummary, setEntitySummary] = useState<{
+    reviewCount: number | null;
+    score: number | null;
+    posKeywords: string | null;
+    negKeywords: string | null;
+  } | null>(null);
+  const lastSummaryKeyRef = useRef<string>('');
+  const [entityMap, setEntityMap] = useState<Map<number, string>>(new Map());
 
   const {
     scope: scopeParam,
     label: effectiveLabel,
-    nodeId: entityId,
-    nodeName: entityNameParam
+    nodeId: entityId
   } = useMemo(
     () => parseReviewFilters(searchParams),
     [searchParams]
@@ -59,6 +67,9 @@ export default function EntityReviewsClient() {
 
   const [resolvedEntityName, setResolvedEntityName] = useState('');
   const [specificUserId, setSpecificUserId] = useState<string | null>(null);
+  const [reviewQuery, setReviewQuery] = useState('');
+  const [entitySearchDraft, setEntitySearchDraft] = useState('');
+  const [reviewSearchDraft, setReviewSearchDraft] = useState('');
 
   const searchParamString = searchParams.toString();
   const detailQueryString = useMemo(() => {
@@ -69,14 +80,24 @@ export default function EntityReviewsClient() {
   }, [searchParamString]);
 
   const entitySearchValue = useMemo(() => {
-    if (entityNameParam) return entityNameParam;
     if (entityId !== null) return resolvedEntityName;
     return '';
-  }, [entityId, entityNameParam, resolvedEntityName]);
+  }, [entityId, resolvedEntityName]);
 
   const hasSpecificUserFilter = Boolean(specificUserId);
 
   const scopeForData = !user && scopeParam === 'my' ? 'all' : effectiveScope;
+  const isEntityContextActive = entityId !== null;
+
+  useEffect(() => {
+    setReviewQuery('');
+    setReviewSearchDraft('');
+  }, [entityId]);
+
+  useEffect(() => {
+    if (isEntityContextActive) return;
+    setEntitySearchDraft(entitySearchValue);
+  }, [entitySearchValue, isEntityContextActive]);
 
   useEffect(() => {
     if (!searchParams.get('user_id')) return;
@@ -182,7 +203,7 @@ export default function EntityReviewsClient() {
     if (!stickyNode) return;
     const updateHeight = () => {
       const nextHeight = stickyNode.offsetHeight;
-      setStickyHeight((prev) => (prev === 0 ? nextHeight : Math.min(prev, nextHeight)));
+      setStickyHeight(nextHeight);
     };
     updateHeight();
     if (typeof ResizeObserver === 'undefined') return;
@@ -191,14 +212,68 @@ export default function EntityReviewsClient() {
     return () => observer.disconnect();
   }, []);
 
+  const entityInfo = useMemo(() => {
+    if (entityId !== null) {
+      const name = resolvedEntityName || `Entity ${entityId}`;
+      return { id: entityId, name };
+    }
+    return null;
+  }, [entityId, resolvedEntityName]);
+
+  useEffect(() => {
+    if (!entityInfo) {
+      setEntitySummary(null);
+      lastSummaryKeyRef.current = '';
+      return;
+    }
+    const scopeValue = searchParams.get('scope') ?? '';
+    const key = `${entityInfo.id ?? ''}|${entityInfo.name}|${scopeValue}`;
+    if (lastSummaryKeyRef.current === key) return;
+    lastSummaryKeyRef.current = key;
+    const params = new URLSearchParams();
+    if (scopeValue) {
+      params.set('scope', scopeValue);
+    }
+    if (entityInfo.id !== null) {
+      params.set('entity_id', String(entityInfo.id));
+    }
+    fetch(`/api/node-review-stats?${params.toString()}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const stats = (data?.stats ?? []) as Array<{
+          node_id: number;
+          node_name: string | null;
+          review_count: number;
+          bayes_score: number;
+          pos_keywords: string | null;
+          neg_keywords: string | null;
+        }>;
+        let match = null as (typeof stats)[number] | null;
+        if (entityInfo.id !== null) {
+          match = stats.find((row) => row.node_id === entityInfo.id) ?? null;
+        }
+        setEntitySummary(
+          match
+            ? {
+                reviewCount: match.review_count,
+                score: match.bayes_score,
+                posKeywords: match.pos_keywords,
+                negKeywords: match.neg_keywords
+              }
+            : null
+        );
+      })
+      .catch(() => {
+        setEntitySummary(null);
+      });
+  }, [entityInfo, searchParams]);
+
+
   function updateQuery(next: {
     scope?: string | null;
     label?: string | null;
-    entity_name?: string | null;
-    entity?: string | null;
     entity_id?: string | null;
   }) {
-    // Prefer entity_* query params.
     const params = new URLSearchParams(searchParams.toString());
     if (next.scope) {
       params.set('scope', next.scope);
@@ -209,16 +284,6 @@ export default function EntityReviewsClient() {
       params.delete('label');
     } else {
       params.set('label', next.label);
-    }
-    if (next.entity_name) {
-      params.set('entity_name', next.entity_name);
-    } else if (next.entity_name !== undefined) {
-      params.delete('entity_name');
-    }
-    if (next.entity) {
-      params.set('entity', next.entity);
-    } else if (next.entity !== undefined) {
-      params.delete('entity');
     }
     if (next.entity_id) {
       params.set('entity_id', next.entity_id);
@@ -240,7 +305,7 @@ export default function EntityReviewsClient() {
 
   useEffect(() => {
     let isActive = true;
-    if (entityId === null || entityNameParam) {
+    if (entityId === null) {
       setResolvedEntityName('');
       return;
     }
@@ -259,7 +324,80 @@ export default function EntityReviewsClient() {
     return () => {
       isActive = false;
     };
-  }, [entityId, entityNameParam]);
+  }, [entityId]);
+
+  useEffect(() => {
+    let isActive = true;
+    fetch('/api/entities')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isActive) return;
+        const entities = (data?.entities ?? []) as Array<{ id: number; name: string }>;
+        const nextMap = new Map<number, string>();
+        entities.forEach((entity) => {
+          nextMap.set(entity.id, entity.name);
+        });
+        setEntityMap(nextMap);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setEntityMap(new Map());
+      });
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  function commitEntitySelection(entity: { id: number; name: string }) {
+    setResolvedEntityName(entity.name);
+    setReviewQuery('');
+    setReviewSearchDraft('');
+    setEntitySearchDraft('');
+    updateQuery({
+      entity_id: String(entity.id),
+    });
+  }
+
+  function clearEntitySelection() {
+    setResolvedEntityName('');
+    setEntitySearchDraft('');
+    updateQuery({
+      entity_id: null
+    });
+  }
+
+  const filteredReviews = useMemo(() => {
+    if (!isEntityContextActive) return reviews;
+    const query = reviewQuery.trim().toLowerCase();
+    if (!query) return reviews;
+    return reviews.filter((review) => review.preview.toLowerCase().includes(query));
+  }, [isEntityContextActive, reviewQuery, reviews]);
+
+  function renderHighlightedText(text: string, query: string) {
+    const trimmed = query.trim();
+    if (!trimmed) return text;
+    const lowerText = text.toLowerCase();
+    const lowerQuery = trimmed.toLowerCase();
+    const parts: React.ReactNode[] = [];
+    let startIndex = 0;
+    let matchIndex = lowerText.indexOf(lowerQuery);
+    while (matchIndex !== -1) {
+      if (matchIndex > startIndex) {
+        parts.push(text.slice(startIndex, matchIndex));
+      }
+      parts.push(
+        <mark key={`${matchIndex}-${lowerQuery}`} className="review-highlight">
+          {text.slice(matchIndex, matchIndex + lowerQuery.length)}
+        </mark>
+      );
+      startIndex = matchIndex + lowerQuery.length;
+      matchIndex = lowerText.indexOf(lowerQuery, startIndex);
+    }
+    if (startIndex < text.length) {
+      parts.push(text.slice(startIndex));
+    }
+    return parts;
+  }
 
   return (
     <>
@@ -299,32 +437,62 @@ export default function EntityReviewsClient() {
             />
           </div>
           <div className="filter-row">
-            <NodeNameSearch
-              value={entitySearchValue}
-              onCommit={(value) =>
-                updateQuery({
-                  entity_name: value.trim() ? value : null,
-                  entity: null,
-                  entity_id: null
-                })
-              }
-              onClear={() => {
-                setSpecificUserId(null);
-                updateQuery({
-                  entity_name: null,
-                  entity: null,
-                  entity_id: null
-                });
-              }}
-              forceClear={hasSpecificUserFilter}
-              placeholder={
-                hasSpecificUserFilter
-                  ? 'Filtered by user'
-                  : 'Type entity name'
-              }
-            />
+            {isEntityContextActive ? (
+              <NodeNameSearch
+                value={reviewQuery}
+                inputValue={reviewSearchDraft}
+                onInputValueChange={setReviewSearchDraft}
+                onCommit={(value) => setReviewQuery(value)}
+                onClear={() => {
+                  setReviewSearchDraft('');
+                  setReviewQuery('');
+                }}
+                placeholder="Search review text"
+              />
+            ) : (
+              <NodeNameSearch
+                mode="entity"
+                value={entitySearchValue}
+                inputValue={entitySearchDraft}
+                onInputValueChange={setEntitySearchDraft}
+                onCommit={commitEntitySelection}
+                onClear={() => {
+                  setSpecificUserId(null);
+                  clearEntitySelection();
+                }}
+                forceClear={hasSpecificUserFilter}
+                placeholder={
+                  hasSpecificUserFilter
+                    ? 'Filtered by user'
+                    : 'Type entity name'
+                }
+              />
+            )}
           </div>
         </section>
+        {entityInfo && (
+          <section className="section">
+            <div className="entity-summary-panel">
+              <button
+                type="button"
+                className="entity-summary-close"
+                aria-label="Close entity summary"
+                onClick={() => {
+                  clearEntitySelection();
+                }}
+              >
+                ×
+              </button>
+              <EntitySummaryRow
+                name={entityInfo.name}
+                posKeywords={entitySummary?.posKeywords ?? ''}
+                negKeywords={entitySummary?.negKeywords ?? ''}
+                reviewCount={entitySummary?.reviewCount ?? null}
+                score={entitySummary?.score ?? null}
+              />
+            </div>
+          </section>
+        )}
       </div>
 
       <div className="sticky-spacer" style={{ height: stickyHeight }} aria-hidden="true" />
@@ -338,26 +506,35 @@ export default function EntityReviewsClient() {
           {error && <small>{error}</small>}
           {!isLoading &&
             !error &&
-            reviews.map((review) => {
+            filteredReviews.map((review) => {
               const reviewEntityId = review.entity_id;
-              const entityLabel = review.entity_name;
+              const entityLabel =
+                reviewEntityId !== null ? entityMap.get(reviewEntityId) ?? `Entity ${reviewEntityId}` : 'Unknown';
+              const previewText =
+                isEntityContextActive && reviewQuery.trim()
+                  ? renderHighlightedText(review.preview, reviewQuery)
+                  : review.preview;
               return (
                 <li key={review.id}>
                   <div className="review-line">
                     <span className="review-preview">
-                      <span
-                        className="badge badge--filter"
-                        onClick={() => {
-                          if (reviewEntityId === null) return;
-                          updateQuery({
-                            entity_id: String(reviewEntityId),
-                            entity: null,
-                            entity_name: null
-                          });
-                        }}
-                      >
-                        {entityLabel}
-                      </span>
+                      {reviewEntityId !== null ? (
+                        <span
+                          className="badge badge--filter"
+                          onClick={() => {
+                            commitEntitySelection({
+                              id: reviewEntityId,
+                              name: entityLabel
+                            });
+                          }}
+                        >
+                          {entityLabel}
+                        </span>
+                      ) : (
+                        <span className="badge badge--muted" aria-disabled="true">
+                          {entityLabel}
+                        </span>
+                      )}
                       {review.sentiment && (
                         <span
                           className={`review-sentiment review-sentiment--${review.sentiment}`}
@@ -370,7 +547,7 @@ export default function EntityReviewsClient() {
                         className="review-link"
                         href={`/reviews/${review.id}${detailQueryString}`}
                       >
-                        {review.preview}
+                        {previewText}
                       </Link>
                     </span>
                   </div>
@@ -389,7 +566,7 @@ export default function EntityReviewsClient() {
               );
             })}
           </ul>
-          {!isLoading && !error && reviews.length === 0 && <small>No reviews found.</small>}
+          {!isLoading && !error && filteredReviews.length === 0 && <small>No reviews found.</small>}
           <div ref={loadMoreRef} />
           {isLoadingMore && <small>Loading more...</small>}
         </div>
