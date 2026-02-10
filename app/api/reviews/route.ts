@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     user_id: string;
     created_at: string;
     updated_at: string | null;
-    preview: string;
+    content: string;
     entity_name: string;
     entity_id: number | null;
     sentiment?: 'positive' | 'negative';
@@ -107,7 +107,7 @@ export async function GET(request: Request) {
     user_id: row.user_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    preview: previewText(row.content),
+    content: previewText(row.content),
     entity_name: row.entity_name,
     entity_id: row.entity_id
   }));

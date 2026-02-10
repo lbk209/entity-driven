@@ -654,6 +654,16 @@ textarea {
   border-bottom: 1px solid #eee;
 }
 
+.list-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.list-row > .review-meta {
+  margin-top: 0;
+}
+
 .section--reviews {
   --sticky-height: 0px;
 }
@@ -696,8 +706,19 @@ textarea {
   text-decoration: none;
 }
 
-.review-link:hover {
-  text-decoration: underline;
+.review-content-trigger {
+  display: block;
+  cursor: pointer;
+}
+
+.review-text,
+.review-preview-text,
+.review-remainder-text {
+  display: inline;
+}
+
+.review-remainder-text {
+  white-space: inherit;
 }
 
 .review-preview .badge {
@@ -705,9 +726,9 @@ textarea {
 }
 
 .review-highlight {
-  background: #fff3a6;
-  padding: 0 2px;
-  border-radius: 2px;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
 }
 
 .badge {
@@ -807,6 +828,12 @@ button {
   min-width: 0;
 }
 
+.review-item--expanded .review-preview {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .review-sentiment {
   margin: 0 6px 0 2px;
   font-size: 16px;
@@ -829,9 +856,71 @@ button {
     white-space: normal;
   }
 
+  .review-item--expanded .review-preview {
+    display: block;
+    -webkit-line-clamp: unset;
+    -webkit-box-orient: initial;
+  }
+
   .review-preview::after {
     display: none;
   }
+}
+
+
+.review-edit-panel {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+
+.review-edit-textarea {
+  width: 100%;
+  min-height: 120px;
+  white-space: pre-wrap;
+  resize: vertical;
+}
+
+.review-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-footer-row .review-meta {
+  margin-top: 0;
+}
+
+.review-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.review-control-button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: #1f1f1f;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.review-control-button--ghost {
+  background: #fff;
+  color: #1f1f1f;
+  border-color: #ddd;
+}
+
+.review-control-button--danger {
+  background: #a62323;
 }
 
 .review-meta {

@@ -38,6 +38,20 @@ export default function ReviewForm({
   const [showEntitySuggestions, setShowEntitySuggestions] = useState(false);
   const [submitMsg, setSubmitMsg] = useState('');
 
+  const buildEntityReviewsHref = (targetReviewId?: number) => {
+    const params = new URLSearchParams(returnQuery.replace(/^\?/, ''));
+    if (entityId !== null) {
+      params.set('entity_id', String(entityId));
+    }
+    if (targetReviewId) {
+      params.set('review', String(targetReviewId));
+    } else {
+      params.delete('review');
+    }
+    const serialized = params.toString();
+    return serialized ? `/entity-reviews?${serialized}` : '/entity-reviews';
+  };
+
   const suggestionEntities = useMemo(() => {
     const value = entityName.trim().toLowerCase();
     if (!value) return [];
@@ -64,7 +78,7 @@ export default function ReviewForm({
       method: 'DELETE'
     });
     if (res.ok) {
-      router.push(returnQuery ? `/entity-reviews${returnQuery}` : '/entity-reviews');
+      router.push(buildEntityReviewsHref());
       return;
     }
     const data = await res.json().catch(() => ({}));
@@ -98,7 +112,7 @@ export default function ReviewForm({
       const data = await res.json().catch(() => ({}));
       const targetId = isEdit ? reviewId : data?.id;
       if (targetId) {
-        router.push(`/reviews/${targetId}${returnQuery}`);
+        router.push(buildEntityReviewsHref(targetId));
         router.refresh();
         return;
       }

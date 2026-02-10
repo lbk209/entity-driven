@@ -82,8 +82,15 @@ export default function EditReviewPage({
   if (!sessionUser) {
     redirect(`/login?redirect=${encodeURIComponent(`/reviews/${reviewId}/edit${detailSuffix}`)}`);
   }
+  const listParams = new URLSearchParams(detailParams.toString());
+  listParams.set('review', String(review.id));
+  if (review.entity_id !== null) {
+    listParams.set('entity_id', String(review.entity_id));
+  }
+  const listQuery = listParams.toString();
+  const listHref = listQuery ? `/entity-reviews?${listQuery}` : '/entity-reviews';
   if (!canEditReview(sessionUser, review.user_id)) {
-    redirect(`/reviews/${reviewId}${detailSuffix}`);
+    redirect(listHref);
   }
 
   return (
@@ -93,7 +100,7 @@ export default function EditReviewPage({
           <h1>Edit review</h1>
           <small>Update the content or entities, then save.</small>
         </div>
-        <Link href={`/reviews/${review.id}${detailSuffix}`} className="button-link button-link--ghost">
+        <Link href={listHref} className="button-link button-link--ghost">
           Back to review
         </Link>
       </div>
@@ -106,7 +113,7 @@ export default function EditReviewPage({
           entity_name: review.entity_name,
           entity_id: review.entity_id
         }}
-        returnQuery={detailSuffix}
+        returnQuery={listQuery ? `?${listQuery}` : ''}
       />
     </>
   );

@@ -319,7 +319,7 @@ export default function TopEntitiesClient() {
                 {filteredStats.map((row) => (
                   <li
                     key={row.node_id}
-                    className="admin-row--clickable"
+                    className="admin-row--clickable list-row"
                     role="button"
                     tabIndex={0}
                     onClick={() => {

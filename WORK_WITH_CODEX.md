@@ -8,7 +8,10 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 - Create users
 - Submit and edit reviews linked to entities (inline creation supported)
 - Filter reviews by entity_id, taxonomy label, and user context (`scope`/`user_id` normalized to one effective user filter); review content search is local when an entity is selected
-- Review previews use full content; entity badges are inline and mobile clamps to two lines
+- Review details are entity-scoped only (no standalone canonical detail page); deep-link focus uses `/entity-reviews?...&review=<id>`
+- Review previews use full content; expanded review text renders as one continuous inline flow (preview slice + remainder)
+- Entity badges are inline and mobile clamps to two lines
+- Expanded reviews support inline author-only edit/delete with a strict read-vs-edit state machine
 - Top Entities page at `/top-entities` with local, commit-based list search (name or keywords), taxonomy label filters, and sortable columns
 - Entity Reviews and Top Entities use cursor-based incremental loading with fixed page sizes and max caps
 
@@ -39,7 +42,8 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
   - `app/api/nodes/merge/route.ts`
   - `app/api/edges/route.ts`
   - `app/api/node-review-stats/route.ts`
-- Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/page.tsx`, `app/reviews/[id]/edit/page.tsx`
+- Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/edit/page.tsx`
+- Legacy review-entry redirect: `app/reviews/[id]/route.ts`
 - Entity Reviews UI: `app/entity-reviews/EntityReviewsClient.tsx`, `app/components/UserSummaryRow.tsx`
 - Top Entities UI: `app/top-entities/page.tsx`
 - Legacy redirect: `app/node-review-stats/page.tsx`
@@ -80,9 +84,16 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Top Entities list is cursor-paginated with `(score, count, node_id)` cursor; sorting is frozen during scrolling and resets on sort/filter changes.
 - Review list shows real user IDs, entity badges, and uses a snap-scrolling list without a section header.
 - Entity picker uses autocomplete suggestions and commits by entity_id only.
-- Review details show the entity badge before content with an edit action.
+- `/reviews/[id]` is treated as a legacy entry point only; it redirects to `/entity-reviews` with `review` and (when available) `entity_id`.
 - Reviews store `entity_name` directly with optional `entity_id` (resolved vs unresolved reviews).
 - Search/filter uses `review.entity_id` for entity filtering, plus taxonomy labels and user IDs. Review-content search is local (client-side) when an entity is selected.
+- Entity Reviews URL `review` param controls expand/scroll only; only one review can be expanded at a time.
+- Expanding a review never enters edit mode automatically. Edit is explicit and single-review only.
+- Inline review edit/delete lives in expanded rows (author-only controls). Edit mode uses full `review.content` in one textarea.
+- Delete flow hardening: duplicate-click prevention includes an in-flight guard, and failure paths always clear loading state.
+- Review text interaction uses a single clickable content container (preview + remainder) so expanded text has no dead click zones.
+- Review text visual style is intentionally neutral: no selection background/underline; pointer cursor is the primary interaction cue.
+- Shared row spacing uses `.list-row` (column + gap) across Entity Reviews and Top Entities for consistent first/second-line spacing.
 - Entity Reviews URL supports `entity_id` and `user_id` (no `user_name`); `user_id` deep links open the User Info Panel and filter the list.
 - Entity Reviews has two context panels: Entity Info and User Info. In `scope=my`, User Info is always shown first and non-closable; in `scope=all`, Entity Info renders first (if present) and User Info is closable.
 - User Info panel key entities are displayed as plain names (`A, B`) without the `Top entities:` prefix or inline count text.
