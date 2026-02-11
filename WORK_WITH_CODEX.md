@@ -97,8 +97,10 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Expanded read-only author controls show `Edit` only; `Delete` is intentionally available only after entering edit mode.
 - Inline edit layout order is fixed as: entity input + actions row, then review textarea, then footer meta row.
 - Entity input UI no longer shows a static visible `Entity` label in create/inline-edit wrappers; accessibility labels are provided via `aria-label`.
-- Selected entity in `ReviewEntityInput` renders as a badge (`badge badge--filter`), and switching back to typing returns to plain input text (with unchanged suggestions).
-- Selected-entity wrapper width is constrained in inline edit (`.entity-input-wrap--selected`) to prevent stretched badge appearance while keeping right-side action alignment.
+- `ReviewEntityInput` is now always a real input in create and inline edit (no selected/display split, no click-to-enter-edit transition logic).
+- Entity mutability is enforced only via `disabled` in entity-context mode (`entity_id` in URL); suggestion behavior remains unchanged.
+- Entity input styling is intentionally plain input styling (badge-like edit styling experiment removed).
+- Inline edit controls are simplified: base `.review-control-button` is neutral (white background, gray border), `--ghost` is removed, and `--danger` uses red text on a neutral background.
 - Delete flow hardening: duplicate-click prevention includes an in-flight guard, and failure paths always clear loading state.
 - Review text interaction uses a single clickable content container (preview + remainder) so expanded text has no dead click zones.
 - Review text visual style is intentionally neutral: no selection background/underline; pointer cursor is the primary interaction cue.

@@ -874,7 +874,7 @@ export default function EntityReviewsClient() {
                             </button>
                             <button
                               type="button"
-                              className="review-control-button review-control-button--ghost"
+                              className="review-control-button"
                               title="Cancel"
                               aria-label="Cancel"
                               onClick={(event) => {

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRef } from 'react';
 
 type Entity = {
   id: number;
@@ -32,8 +31,6 @@ export default function ReviewEntityInput({
 }: ReviewEntityInputProps) {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [isEditingSelected, setIsEditingSelected] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const suggestionEntities = useMemo(() => {
     const inputValue = value.trim().toLowerCase();
@@ -60,55 +57,17 @@ export default function ReviewEntityInput({
     };
   }, []);
 
-  useEffect(() => {
-    if (entityId === null) {
-      setIsEditingSelected(true);
-      return;
-    }
-    setIsEditingSelected(false);
-  }, [entityId]);
-
-  const showSelectedBadge =
-    entityId !== null && !isEditingSelected && value.trim().length > 0;
-
   return (
-    <div
-      className={`entity-input-wrap ${showSelectedBadge ? 'entity-input-wrap--selected' : ''}`}
-    >
-      {showSelectedBadge && (
-        <button
-          type="button"
-          className="badge badge--filter"
-          onMouseDown={(event) => {
-            event.preventDefault();
-            if (disabled) return;
-            setIsEditingSelected(true);
-            requestAnimationFrame(() => {
-              const input = inputRef.current;
-              if (!input) return;
-              input.focus();
-              const cursor = input.value.length;
-              input.setSelectionRange(cursor, cursor);
-            });
-          }}
-          disabled={disabled}
-          aria-label={disabled ? `${value}` : `Edit ${value}`}
-        >
-          {value}
-        </button>
-      )}
+    <div className="entity-input-wrap">
       <input
-        ref={inputRef}
         id={id}
         value={value}
         onChange={(event) => {
           onChange({ entity_name: event.target.value, entity_id: null });
-          setIsEditingSelected(true);
           setShowSuggestions(true);
         }}
         onFocus={() => {
           if (disabled) return;
-          setIsEditingSelected(true);
           setShowSuggestions(true);
         }}
         onBlur={() => setShowSuggestions(false)}
@@ -135,7 +94,6 @@ export default function ReviewEntityInput({
               onMouseDown={(event) => {
                 event.preventDefault();
                 onChange({ entity_name: entity.name, entity_id: entity.id });
-                setIsEditingSelected(false);
                 setShowSuggestions(false);
               }}
             >
