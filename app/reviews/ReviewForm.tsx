@@ -1,13 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-type Entity = {
-  id: number;
-  name: string;
-  type: string;
-};
+import ReviewEntityInput from '../components/ReviewEntityInput';
 
 type ReviewFormData = {
   content: string;
@@ -29,13 +24,11 @@ export default function ReviewForm({
   returnQuery = ''
 }: ReviewFormProps) {
   const router = useRouter();
-  const [entities, setEntities] = useState<Entity[]>([]);
   const [reviewContent, setReviewContent] = useState(initialData?.content ?? '');
   const [entityName, setEntityName] = useState(initialData?.entity_name ?? '');
   const [entityId, setEntityId] = useState<number | null>(
     initialData?.entity_id ?? null
   );
-  const [showEntitySuggestions, setShowEntitySuggestions] = useState(false);
   const [submitMsg, setSubmitMsg] = useState('');
 
   const buildEntityReviewsHref = (targetReviewId?: number) => {
@@ -51,21 +44,6 @@ export default function ReviewForm({
     const serialized = params.toString();
     return serialized ? `/entity-reviews?${serialized}` : '/entity-reviews';
   };
-
-  const suggestionEntities = useMemo(() => {
-    const value = entityName.trim().toLowerCase();
-    if (!value) return [];
-    return entities
-      .filter((entity) => entity.name.toLowerCase().includes(value))
-      .slice(0, 20);
-  }, [entityName, entities]);
-
-  useEffect(() => {
-    fetch('/api/entities')
-      .then((res) => res.json())
-      .then((data) => setEntities(data.entities || []))
-      .catch(() => setEntities([]));
-  }, []);
 
   async function handleDeleteReview() {
     setSubmitMsg('');
@@ -128,47 +106,17 @@ export default function ReviewForm({
     <section className="section">
       <form onSubmit={handleSubmitReview}>
         <div>
-          <label htmlFor="entity-input">Entity</label>
-          <div className="entity-input-wrap">
-            <input
-              id="entity-input"
-              value={entityName}
-              onChange={(event) => {
-                setEntityName(event.target.value);
-                setEntityId(null);
-                setShowEntitySuggestions(true);
-              }}
-              onFocus={() => setShowEntitySuggestions(true)}
-              onBlur={() => setShowEntitySuggestions(false)}
-              placeholder="Type an entity name"
-              className="entity-input"
-              autoComplete="off"
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded={showEntitySuggestions && suggestionEntities.length > 0}
-              aria-controls="entity-suggestion-list"
-              required
-            />
-            {showEntitySuggestions && suggestionEntities.length > 0 && (
-              <div className="entity-suggestions" role="listbox" id="entity-suggestion-list">
-                {suggestionEntities.map((entity) => (
-                  <button
-                    type="button"
-                    key={entity.id}
-                    role="option"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      setEntityName(entity.name);
-                      setEntityId(entity.id);
-                      setShowEntitySuggestions(false);
-                    }}
-                  >
-                    {entity.name} ({entity.type})
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <ReviewEntityInput
+            id="entity-input"
+            value={entityName}
+            entityId={entityId}
+            onChange={({ entity_name, entity_id }) => {
+              setEntityName(entity_name);
+              setEntityId(entity_id);
+            }}
+            required
+            ariaLabel="Entity name"
+          />
         </div>
 
         <div>

@@ -45,6 +45,7 @@ Minimal Next.js App Router app with SQLite for local testing. Features:
 - Frontend UI: `app/page.tsx`, `app/reviews/new/page.tsx`, `app/reviews/[id]/edit/page.tsx`
 - Legacy review-entry redirect: `app/reviews/[id]/route.ts`
 - Entity Reviews UI: `app/entity-reviews/EntityReviewsClient.tsx`, `app/components/UserSummaryRow.tsx`
+- Shared entity input: `app/components/ReviewEntityInput.tsx`
 - Top Entities UI: `app/top-entities/page.tsx`
 - Legacy redirect: `app/node-review-stats/page.tsx`
 - Shared review form: `app/reviews/ReviewForm.tsx`
@@ -90,6 +91,14 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Entity Reviews URL `review` param controls expand/scroll only; only one review can be expanded at a time.
 - Expanding a review never enters edit mode automatically. Edit is explicit and single-review only.
 - Inline review edit/delete lives in expanded rows (author-only controls). Edit mode uses full `review.content` in one textarea.
+- Inline edit now reuses the shared review-create entity input (`ReviewEntityInput`) so entity autocomplete/selection semantics are identical across create and edit.
+- Inline edit entity rules are mode-gated: entity editing is enabled only with no `entity_id` in URL; when `entity_id` context is active, the inline entity control remains visible but disabled.
+- Inline edit session persists both review text and entity fields (`entity_id` / `entity_name`) on Save; Cancel discards both content and entity draft state.
+- Expanded read-only author controls show `Edit` only; `Delete` is intentionally available only after entering edit mode.
+- Inline edit layout order is fixed as: entity input + actions row, then review textarea, then footer meta row.
+- Entity input UI no longer shows a static visible `Entity` label in create/inline-edit wrappers; accessibility labels are provided via `aria-label`.
+- Selected entity in `ReviewEntityInput` renders as a badge (`badge badge--filter`), and switching back to typing returns to plain input text (with unchanged suggestions).
+- Selected-entity wrapper width is constrained in inline edit (`.entity-input-wrap--selected`) to prevent stretched badge appearance while keeping right-side action alignment.
 - Delete flow hardening: duplicate-click prevention includes an in-flight guard, and failure paths always clear loading state.
 - Review text interaction uses a single clickable content container (preview + remainder) so expanded text has no dead click zones.
 - Review text visual style is intentionally neutral: no selection background/underline; pointer cursor is the primary interaction cue.

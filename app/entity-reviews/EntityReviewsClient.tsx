@@ -8,6 +8,7 @@ import AuthButton from '../components/AuthButton';
 import NodeNameSearch from '../components/NodeNameSearch';
 import EntitySummaryRow from '../components/EntitySummaryRow';
 import UserSummaryRow from '../components/UserSummaryRow';
+import ReviewEntityInput from '../components/ReviewEntityInput';
 import { deriveEffectiveUserId, parseReviewFilters } from '@/lib/reviewFilters';
 import { useSession } from '../components/useSession';
 import ScopeToggle from '../components/ScopeToggle';
@@ -87,9 +88,21 @@ export default function EntityReviewsClient() {
   const [expandedReviewId, setExpandedReviewId] = useState<number | null>(null);
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
   const [editingContent, setEditingContent] = useState('');
+  const [editingEntityName, setEditingEntityName] = useState('');
+  const [editingEntityId, setEditingEntityId] = useState<number | null>(null);
   const [editingMessage, setEditingMessage] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isDeletingReview, setIsDeletingReview] = useState(false);
+
+  const clearEditingState = useCallback(() => {
+    setEditingReviewId(null);
+    setEditingContent('');
+    setEditingEntityName('');
+    setEditingEntityId(null);
+    setEditingMessage('');
+    setIsSavingEdit(false);
+    setIsDeletingReview(false);
+  }, []);
 
   const searchParamString = searchParams.toString();
   const reviewParamValue = searchParams.get('review');
@@ -139,11 +152,9 @@ export default function EntityReviewsClient() {
     setReviewQuery('');
     setReviewSearchDraft('');
     setExpandedReviewId(null);
-    setEditingReviewId(null);
-    setEditingContent('');
-    setEditingMessage('');
+    clearEditingState();
     lastScrolledReviewIdRef.current = null;
-  }, [entityId]);
+  }, [clearEditingState, entityId]);
 
   useEffect(() => {
     if (isEntityContextActive) return;
@@ -272,47 +283,31 @@ export default function EntityReviewsClient() {
   useEffect(() => {
     if (editingReviewId === null) return;
     if (expandedReviewId === editingReviewId) return;
-    setEditingReviewId(null);
-    setEditingContent('');
-    setEditingMessage('');
-    setIsSavingEdit(false);
-    setIsDeletingReview(false);
-  }, [editingReviewId, expandedReviewId]);
+    clearEditingState();
+  }, [clearEditingState, editingReviewId, expandedReviewId]);
 
   useEffect(() => {
     if (editingReviewId === null) return;
     const stillVisible = reviews.some((review) => review.id === editingReviewId);
     if (stillVisible) return;
-    setEditingReviewId(null);
-    setEditingContent('');
-    setEditingMessage('');
-    setIsSavingEdit(false);
-    setIsDeletingReview(false);
-  }, [editingReviewId, reviews]);
+    clearEditingState();
+  }, [clearEditingState, editingReviewId, reviews]);
 
   useEffect(() => {
     if (editingReviewId === null) return;
     const editingReview = reviews.find((review) => review.id === editingReviewId);
     if (!editingReview) return;
     if (user?.user_id === editingReview.user_id) return;
-    setEditingReviewId(null);
-    setEditingContent('');
-    setEditingMessage('');
-    setIsSavingEdit(false);
-    setIsDeletingReview(false);
-  }, [editingReviewId, reviews, user?.user_id]);
+    clearEditingState();
+  }, [clearEditingState, editingReviewId, reviews, user?.user_id]);
 
   useEffect(() => {
     const previousSearchParam = previousSearchParamRef.current;
     if (previousSearchParam !== searchParamString && editingReviewId !== null) {
-      setEditingReviewId(null);
-      setEditingContent('');
-      setEditingMessage('');
-      setIsSavingEdit(false);
-      setIsDeletingReview(false);
+      clearEditingState();
     }
     previousSearchParamRef.current = searchParamString;
-  }, [editingReviewId, searchParamString]);
+  }, [clearEditingState, editingReviewId, searchParamString]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -588,14 +583,14 @@ export default function EntityReviewsClient() {
   const startEditingReview = useCallback((review: Review) => {
     setEditingReviewId(review.id);
     setEditingContent(review.content);
+    setEditingEntityName(review.entity_name);
+    setEditingEntityId(review.entity_id);
     setEditingMessage('');
   }, []);
 
   const cancelEditingReview = useCallback(() => {
-    setEditingReviewId(null);
-    setEditingContent('');
-    setEditingMessage('');
-  }, []);
+    clearEditingState();
+  }, [clearEditingState]);
 
   const deleteReview = useCallback(
     async (review: Review) => {
@@ -612,8 +607,7 @@ export default function EntityReviewsClient() {
           return;
         }
         setReviews((prev) => prev.filter((item) => item.id !== review.id));
-        setEditingReviewId(null);
-        setEditingContent('');
+        clearEditingState();
         setExpandedReviewId((prev) => (prev === review.id ? null : prev));
         if (requestedReviewId === review.id) {
           updateQuery({ review: null });
@@ -626,13 +620,14 @@ export default function EntityReviewsClient() {
         setIsDeletingReview(false);
       }
     },
-    [isDeletingReview, requestedReviewId, updateQuery]
+    [clearEditingState, isDeletingReview, requestedReviewId, updateQuery]
   );
 
   const saveEditedReview = useCallback(
     async (review: Review) => {
       if (isSavingEdit) return;
       const nextContent = editingContent.trim();
+      const nextEntityName = editingEntityName.trim();
       if (!nextContent) {
         setEditingMessage('Review text is required.');
         return;
@@ -645,8 +640,8 @@ export default function EntityReviewsClient() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             content: nextContent,
-            entity_name: review.entity_name,
-            entity_id: review.entity_id
+            entity_name: nextEntityName,
+            entity_id: editingEntityId
           })
         });
         if (!res.ok) {
@@ -658,18 +653,22 @@ export default function EntityReviewsClient() {
         setReviews((prev) =>
           prev.map((item) =>
             item.id === review.id
-              ? { ...item, content: nextContent, updated_at: now }
+              ? {
+                  ...item,
+                  content: nextContent,
+                  entity_name: nextEntityName,
+                  entity_id: editingEntityId,
+                  updated_at: now
+                }
               : item
           )
         );
-        setEditingReviewId(null);
-        setEditingContent('');
-        setEditingMessage('');
+        clearEditingState();
       } finally {
         setIsSavingEdit(false);
       }
     },
-    [editingContent, isSavingEdit]
+    [clearEditingState, editingContent, editingEntityId, editingEntityName, isSavingEdit]
   );
 
   return (
@@ -844,6 +843,63 @@ export default function EntityReviewsClient() {
                   <div className="review-body">
                     {isEditing ? (
                       <div className="review-edit-panel">
+                        <div className="review-edit-header">
+                          <div className="review-edit-entity">
+                            <ReviewEntityInput
+                              id={`edit-entity-input-${review.id}`}
+                              value={editingEntityName}
+                              entityId={editingEntityId}
+                              onChange={({ entity_name, entity_id }) => {
+                                setEditingEntityName(entity_name);
+                                setEditingEntityId(entity_id);
+                              }}
+                              disabled={isEntityContextActive}
+                              required
+                              ariaLabel="Entity name"
+                            />
+                          </div>
+                          <div className="review-controls">
+                            <button
+                              type="button"
+                              className="review-control-button"
+                              title="Save"
+                              aria-label="Save"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void saveEditedReview(review);
+                              }}
+                              disabled={isSavingEdit || isDeletingReview}
+                            >
+                              ✓
+                            </button>
+                            <button
+                              type="button"
+                              className="review-control-button review-control-button--ghost"
+                              title="Cancel"
+                              aria-label="Cancel"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                cancelEditingReview();
+                              }}
+                              disabled={isSavingEdit || isDeletingReview}
+                            >
+                              ✕
+                            </button>
+                            <button
+                              type="button"
+                              className="review-control-button review-control-button--danger"
+                              title="Delete"
+                              aria-label="Delete"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void deleteReview(review);
+                              }}
+                              disabled={isSavingEdit || isDeletingReview}
+                            >
+                              🗑
+                            </button>
+                          </div>
+                        </div>
                         <textarea
                           value={editingContent}
                           onChange={(event) => setEditingContent(event.target.value)}
@@ -918,79 +974,20 @@ export default function EntityReviewsClient() {
                       ·{' '}
                       {new Date(review.updated_at ?? review.created_at).toLocaleString()}
                     </small>
-                    {isExpanded && isAuthor && (
+                    {isExpanded && isAuthor && !isEditing && (
                       <div className="review-controls">
-                        {isEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              className="review-control-button"
-                              title="Save"
-                              aria-label="Save"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void saveEditedReview(review);
-                              }}
-                              disabled={isSavingEdit || isDeletingReview}
-                            >
-                              ✓
-                            </button>
-                            <button
-                              type="button"
-                              className="review-control-button review-control-button--ghost"
-                              title="Cancel"
-                              aria-label="Cancel"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                cancelEditingReview();
-                              }}
-                              disabled={isSavingEdit || isDeletingReview}
-                            >
-                              ✕
-                            </button>
-                            <button
-                              type="button"
-                              className="review-control-button review-control-button--danger"
-                              title="Delete"
-                              aria-label="Delete"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void deleteReview(review);
-                              }}
-                              disabled={isSavingEdit || isDeletingReview}
-                            >
-                              🗑
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="review-control-button"
-                              title="Edit"
-                              aria-label="Edit"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                startEditingReview(review);
-                              }}
-                            >
-                              ✎
-                            </button>
-                            <button
-                              type="button"
-                              className="review-control-button review-control-button--danger"
-                              title="Delete"
-                              aria-label="Delete"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void deleteReview(review);
-                              }}
-                              disabled={isDeletingReview}
-                            >
-                              🗑
-                            </button>
-                          </>
-                        )}
+                        <button
+                          type="button"
+                          className="review-control-button"
+                          title="Edit"
+                          aria-label="Edit"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            startEditingReview(review);
+                          }}
+                        >
+                          ✎
+                        </button>
                       </div>
                     )}
                   </div>

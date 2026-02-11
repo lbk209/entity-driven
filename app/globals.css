@@ -874,6 +874,29 @@ button {
   margin: 6px 0 10px;
 }
 
+.review-edit-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-edit-entity {
+  flex: 0 0 50%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.review-edit-entity .entity-input:disabled {
+  background: transparent;
+  color: #7a7a7a;
+  cursor: not-allowed;
+}
+
 .review-edit-textarea {
   width: 100%;
   min-height: 120px;
@@ -892,7 +915,7 @@ button {
 }
 
 .review-controls {
-  margin-left: auto;
+  margin-left: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1102,6 +1125,19 @@ button {
   position: relative;
   flex: 1 1 0;
   min-width: 0;
+}
+
+.entity-input-wrap--selected {
+  display: block;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 240px;
+}
+
+.entity-input-wrap--selected .entity-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .entity-suggestions {
