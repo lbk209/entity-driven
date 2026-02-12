@@ -90,6 +90,13 @@ The repository was pushed after cleaning history to remove `node_modules` and bu
 - Search/filter uses `review.entity_id` for entity filtering, plus taxonomy labels and user IDs. Review-content search is local (client-side) when an entity is selected.
 - Entity Reviews URL `review` param controls expand/scroll only; only one review can be expanded at a time.
 - Expanding a review never enters edit mode automatically. Edit is explicit and single-review only.
+- Write review now opens an inline draft row at the top of Entity Reviews (no route change to `/reviews/new` for this primary flow).
+- Single active session rule is enforced in Entity Reviews: `draftReview` and `editingReviewId` are mutually exclusive; creating a draft clears active edit/expand and ignores URL `?review=` until draft is cleared.
+- Draft create context rules: when `entity_id` is active, draft initializes with that entity and disables entity editing; clicking Write review removes URL `user_id` via `router.replace` while preserving `scope`/`entity_id`.
+- Draft save is wired to `POST /api/review` (no refetch): on success, draft is cleared, new review is prepended locally (entity-filter match required), and the new review is expanded; on failure, draft remains open with inline error state.
+- Client create normalization is defensive because `POST /api/review` currently returns `{ id }` in this repo: prepend falls back to draft/session values for `content`, `entity_*`, `user_id`, and `created_at` to keep list shape safe.
+- Expand scroll behavior is stabilized for real reviews: expansion uses top-delta correction (`requestAnimationFrame` + `window.scrollBy({ behavior: 'auto' })`) to prevent jump from height changes; collapse keeps default behavior.
+- Draft creation auto-scrolls into view using centered positioning for usability on long lists.
 - Inline review edit/delete lives in expanded rows (author-only controls). Edit mode uses full `review.content` in one textarea.
 - Inline edit now reuses the shared review-create entity input (`ReviewEntityInput`) so entity autocomplete/selection semantics are identical across create and edit.
 - Inline edit entity rules are mode-gated: entity editing is enabled only with no `entity_id` in URL; when `entity_id` context is active, the inline entity control remains visible but disabled.

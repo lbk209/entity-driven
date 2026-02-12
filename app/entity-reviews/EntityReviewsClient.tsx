@@ -25,6 +25,13 @@ type Review = {
   sentiment?: 'positive' | 'negative';
 };
 
+type DraftReview = {
+  tempId: string;
+  entity_id: number | null;
+  entity_name: string;
+  content: string;
+};
+
 type ReviewLabelRow = {
   label: string;
   all_count: number;
@@ -47,12 +54,12 @@ export default function EntityReviewsClient() {
   const [cursor, setCursor] = useState<{ created_at: string; review_id: number } | null>(null);
   const [stickyHeight, setStickyHeight] = useState(0);
   const stickyRef = useRef<HTMLDivElement | null>(null);
+  const draftRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const reviewItemRefs = useRef<Map<number, HTMLLIElement>>(new Map());
+  const reviewRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const isFetchingRef = useRef(false);
   // Synchronous guard so rapid repeated clicks cannot fire duplicate DELETE requests.
   const isDeletingInFlightRef = useRef(false);
-  const lastScrolledReviewIdRef = useRef<number | null>(null);
   const previousSearchParamRef = useRef<string>('');
   const [entitySummary, setEntitySummary] = useState<{
     reviewCount: number | null;
@@ -87,6 +94,9 @@ export default function EntityReviewsClient() {
   const [reviewSearchDraft, setReviewSearchDraft] = useState('');
   const [expandedReviewId, setExpandedReviewId] = useState<number | null>(null);
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
+  const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [editingEntityName, setEditingEntityName] = useState('');
   const [editingEntityId, setEditingEntityId] = useState<number | null>(null);
@@ -153,7 +163,9 @@ export default function EntityReviewsClient() {
     setReviewSearchDraft('');
     setExpandedReviewId(null);
     clearEditingState();
-    lastScrolledReviewIdRef.current = null;
+    setDraftReview(null);
+    setIsSavingDraft(false);
+    setDraftError(null);
   }, [clearEditingState, entityId]);
 
   useEffect(() => {
@@ -254,14 +266,33 @@ export default function EntityReviewsClient() {
   }, [hasMore, loadMoreReviews, reviews.length]);
 
   useEffect(() => {
+    if (draftReview) {
+      setExpandedReviewId(null);
+      return;
+    }
     if (requestedReviewId === null) {
       setExpandedReviewId(null);
-      lastScrolledReviewIdRef.current = null;
+      return;
+    }
+    if (expandedReviewId === requestedReviewId) {
       return;
     }
     const hasRequestedReview = reviews.some((review) => review.id === requestedReviewId);
     if (hasRequestedReview) {
+      const key = String(requestedReviewId);
+      const reviewElement = reviewRefs.current[key];
+      const topBefore = reviewElement?.getBoundingClientRect().top;
       setExpandedReviewId(requestedReviewId);
+      if (topBefore !== undefined) {
+        requestAnimationFrame(() => {
+          const elementAfter = reviewRefs.current[key];
+          if (!elementAfter) return;
+          const topAfter = elementAfter.getBoundingClientRect().top;
+          const delta = topAfter - topBefore;
+          if (delta === 0) return;
+          window.scrollBy({ top: delta, behavior: 'auto' });
+        });
+      }
       return;
     }
     setExpandedReviewId(null);
@@ -269,16 +300,17 @@ export default function EntityReviewsClient() {
       return;
     }
     void loadMoreReviews();
-  }, [cursor, hasMore, isLoading, loadMoreReviews, requestedReviewId, reviews, reviews.length]);
-
-  useEffect(() => {
-    if (expandedReviewId === null) return;
-    if (lastScrolledReviewIdRef.current === expandedReviewId) return;
-    const node = reviewItemRefs.current.get(expandedReviewId);
-    if (!node) return;
-    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    lastScrolledReviewIdRef.current = expandedReviewId;
-  }, [expandedReviewId, reviewQuery, reviews, isEntityContextActive]);
+  }, [
+    cursor,
+    draftReview,
+    expandedReviewId,
+    hasMore,
+    isLoading,
+    loadMoreReviews,
+    requestedReviewId,
+    reviews,
+    reviews.length
+  ]);
 
   useEffect(() => {
     if (editingReviewId === null) return;
@@ -308,6 +340,21 @@ export default function EntityReviewsClient() {
     }
     previousSearchParamRef.current = searchParamString;
   }, [clearEditingState, editingReviewId, searchParamString]);
+
+  useEffect(() => {
+    if (!draftReview) return;
+    if (expandedReviewId !== null) {
+      setExpandedReviewId(null);
+    }
+    if (editingReviewId !== null) {
+      clearEditingState();
+    }
+  }, [clearEditingState, draftReview, editingReviewId, expandedReviewId]);
+
+  useEffect(() => {
+    if (!draftReview) return;
+    draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [draftReview?.tempId]);
 
   useEffect(() => {
     const stickyNode = stickyRef.current;
@@ -574,19 +621,29 @@ export default function EntityReviewsClient() {
 
   const handleReviewToggle = useCallback(
     (review: Review) => {
+      if (draftReview) {
+        setDraftReview(null);
+        setIsSavingDraft(false);
+        setDraftError(null);
+      }
       const isExpanded = expandedReviewId === review.id;
       updateQuery({ review: isExpanded ? null : String(review.id) });
     },
-    [expandedReviewId, updateQuery]
+    [draftReview, expandedReviewId, updateQuery]
   );
 
   const startEditingReview = useCallback((review: Review) => {
+    if (draftReview) {
+      setDraftReview(null);
+      setIsSavingDraft(false);
+      setDraftError(null);
+    }
     setEditingReviewId(review.id);
     setEditingContent(review.content);
     setEditingEntityName(review.entity_name);
     setEditingEntityId(review.entity_id);
     setEditingMessage('');
-  }, []);
+  }, [draftReview]);
 
   const cancelEditingReview = useCallback(() => {
     clearEditingState();
@@ -671,6 +728,110 @@ export default function EntityReviewsClient() {
     [clearEditingState, editingContent, editingEntityId, editingEntityName, isSavingEdit]
   );
 
+  const startDraftReview = useCallback(() => {
+    clearEditingState();
+    setExpandedReviewId(null);
+    const hasEntityFilter = entityId !== null;
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.has('user_id')) {
+      params.delete('user_id');
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname);
+    }
+    const entityName =
+      hasEntityFilter && entityId !== null
+        ? resolvedEntityName || entityMap.get(entityId) || `Entity ${entityId}`
+        : '';
+    setDraftReview({
+      tempId: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      entity_id: hasEntityFilter ? entityId : null,
+      entity_name: entityName,
+      content: ''
+    });
+    setIsSavingDraft(false);
+    setDraftError(null);
+  }, [clearEditingState, entityId, entityMap, pathname, resolvedEntityName, router, searchParams]);
+
+  const cancelDraftReview = useCallback(() => {
+    setDraftReview(null);
+    setIsSavingDraft(false);
+    setDraftError(null);
+  }, []);
+
+  const saveDraftReview = useCallback(async () => {
+    if (!draftReview || isSavingDraft) return;
+    const nextContent = draftReview.content.trim();
+    if (!nextContent) return;
+    setIsSavingDraft(true);
+    setDraftError(null);
+    try {
+      const res = await fetch('/api/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: nextContent,
+          entity_id: draftReview.entity_id,
+          entity_name: draftReview.entity_name
+        })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setDraftError(data.error || 'Failed to save review.');
+        return;
+      }
+      const createdRaw = (await res.json()) as {
+        id?: number;
+        content?: string;
+        entity_id?: number | null;
+        entity_name?: string;
+        user_id?: number | string;
+        user_name?: string;
+        created_at?: string;
+      };
+      const createdId = Number(createdRaw?.id);
+      if (!Number.isFinite(createdId) || createdId <= 0) {
+        setDraftError('Failed to save review.');
+        return;
+      }
+      const createdEntityId =
+        typeof createdRaw?.entity_id === 'number' || createdRaw?.entity_id === null
+          ? createdRaw.entity_id
+          : draftReview.entity_id;
+      const createdEntityName =
+        typeof createdRaw?.entity_name === 'string' ? createdRaw.entity_name : draftReview.entity_name;
+      const createdContent = typeof createdRaw?.content === 'string' ? createdRaw.content : nextContent;
+      const createdUserId = createdRaw?.user_id ?? user?.user_id ?? '';
+      const createdAt =
+        typeof createdRaw?.created_at === 'string' && createdRaw.created_at
+          ? createdRaw.created_at
+          : new Date().toISOString();
+      setDraftReview(null);
+      setIsSavingDraft(false);
+      setDraftError(null);
+      const shouldInsert = entityId === null || createdEntityId === entityId;
+      if (!shouldInsert) return;
+      setReviews((prev) =>
+        [
+          {
+            id: createdId,
+            user_id: String(createdUserId),
+            created_at: createdAt,
+            updated_at: null,
+            content: createdContent,
+            entity_name: createdEntityName,
+            entity_id: createdEntityId
+          },
+          ...prev
+        ].slice(0, ENTITY_REVIEWS_MAX_ITEMS)
+      );
+      setExpandedReviewId(createdId);
+    } catch {
+      setDraftError('Failed to save review.');
+    } finally {
+      setIsSavingDraft(false);
+    }
+  }, [draftReview, entityId, isSavingDraft, user?.user_id]);
+
   return (
     <>
       <div className="sticky-panel" ref={stickyRef}>
@@ -684,9 +845,9 @@ export default function EntityReviewsClient() {
               <Link href={topEntitiesHref} className="button-link">
                 Top Entities
               </Link>
-              <Link href="/reviews/new" className="button-link">
+              <button type="button" className="button-link" onClick={startDraftReview}>
                 Write review
-              </Link>
+              </button>
               <AuthButton />
             </div>
           </div>
@@ -813,6 +974,81 @@ export default function EntityReviewsClient() {
           <ul className="list list--snap">
           {isLoading && <small>Loading...</small>}
           {error && <small>{error}</small>}
+          {!isLoading && !error && draftReview && (
+            <li key={draftReview.tempId} className="review-item review-item--expanded list-row">
+              <div className="review-body" ref={draftRef}>
+                <div className="review-edit-panel">
+                  <div className="review-edit-header">
+                    <div className="review-edit-entity">
+                      <ReviewEntityInput
+                        id={`draft-entity-input-${draftReview.tempId}`}
+                        value={draftReview.entity_name}
+                        entityId={draftReview.entity_id}
+                        onChange={({ entity_name, entity_id }) => {
+                          setDraftReview((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  entity_name,
+                                  entity_id
+                                }
+                              : prev
+                          );
+                        }}
+                        disabled={isEntityContextActive}
+                        required
+                        ariaLabel="Entity name"
+                      />
+                    </div>
+                    <div className="review-controls">
+                      <button
+                        type="button"
+                        className="review-control-button"
+                        title="Save"
+                        aria-label="Save"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void saveDraftReview();
+                        }}
+                        disabled={isSavingDraft}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        className="review-control-button"
+                        title="Cancel"
+                        aria-label="Cancel"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          cancelDraftReview();
+                        }}
+                        disabled={isSavingDraft}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    value={draftReview.content}
+                    onChange={(event) => {
+                      const nextContent = event.target.value;
+                      setDraftReview((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              content: nextContent
+                            }
+                          : prev
+                      );
+                    }}
+                    className="review-edit-textarea"
+                  />
+                  {draftError && <small>{draftError}</small>}
+                </div>
+              </div>
+            </li>
+          )}
           {!isLoading &&
             !error &&
             filteredReviews.map((review) => {
@@ -832,15 +1068,13 @@ export default function EntityReviewsClient() {
                 <li
                   key={review.id}
                   className={isExpanded ? 'review-item review-item--expanded list-row' : 'review-item list-row'}
-                  ref={(node) => {
-                    if (!node) {
-                      reviewItemRefs.current.delete(review.id);
-                      return;
-                    }
-                    reviewItemRefs.current.set(review.id, node);
-                  }}
                 >
-                  <div className="review-body">
+                  <div
+                    className="review-body"
+                    ref={(el) => {
+                      reviewRefs.current[String(review.id)] = el;
+                    }}
+                  >
                     {isEditing ? (
                       <div className="review-edit-panel">
                         <div className="review-edit-header">
@@ -995,7 +1229,7 @@ export default function EntityReviewsClient() {
               );
             })}
           </ul>
-          {!isLoading && !error && filteredReviews.length === 0 && <small>No reviews found.</small>}
+          {!isLoading && !error && filteredReviews.length === 0 && !draftReview && <small>No reviews found.</small>}
           <div ref={loadMoreRef} />
           {isLoadingMore && <small>Loading more...</small>}
         </div>
