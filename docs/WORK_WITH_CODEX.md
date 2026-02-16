@@ -1,3 +1,14 @@
+## Architecture Separation Notice
+
+This document reflects the CURRENT implementation state.
+
+The target system structure is defined in ARCHITECTURE.md.
+
+Future refactors should move the implementation toward that document.
+
+Do not rewrite the rest of the file.
+Do not merge architecture details into it.
+
 # Work With Codex (Entity Reviews)
 
 This file captures context so we can continue quickly next time.
